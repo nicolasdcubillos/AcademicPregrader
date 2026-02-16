@@ -1,0 +1,13 @@
+Criterios:
+- Lógica y corrección de la solución (0 a 5)
+- Estructura del programa (0 a 3)
+- Estilo y claridad del código (0 a 2)
+
+Devuelve un JSON con:
+{
+  "logica": number,
+  "estructura": number,
+  "estilo": number,
+  "total": number,
+  "comentario": string
+}
