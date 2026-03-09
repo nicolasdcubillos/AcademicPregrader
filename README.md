@@ -1,2 +1,197 @@
 # AcademicPregrader
-Internal AI-based pre-grading tool for academic projects with plagiarism checks and suggested scoring.
+
+> **⚠️ Grade suggestion tool — NOT for final grading**
+>
+> AcademicPregrader generates **automated grading suggestions** for C++ source code.
+> The scores it produces are a starting point for the instructor, **not a final decision**.
+> They must always be reviewed, adjusted, and validated by a human before being communicated to students.
+
+---
+
+## What is it?
+
+AcademicPregrader is a command-line tool that automates three stages of the grading workflow:
+
+1. **Compilation**: verifies that the student's C++ code compiles without errors.
+2. **Plagiarism detection**: compares all submissions against each other using [JPlag](https://github.com/jplag/JPlag) and flags pairs with high similarity.
+3. **LLM evaluation**: sends the code, the assignment description, and the rubric to a local language model (via Ollama) and returns scores broken down into logic, structure, and style.
+
+The final output is a `resultados.csv` file with one row per student.
+
+---
+
+## Architecture
+
+```
+base_folder/
+├── enunciado.pdf          ← Assignment description (read with pdfplumber)
+├── rubrica.txt            ← Grading rubric (optional; falls back to src/rubrica.txt)
+├── student_1/
+│   └── solution.cpp
+├── student_2/
+│   └── solution.cpp
+├── ...
+├── resultados.csv         ← Auto-generated output
+├── .evaluation_cache.json ← Evaluation cache (do not delete between runs)
+└── .jplag_results.zip     ← Raw JPlag results (generated when plagiarism is enabled)
+```
+
+### Execution flow
+
+```
+PDF assignment
+      │
+      ▼
+[extract_pdf_text]   rubrica.txt
+      │                   │
+      └────────┬──────────┘
+               │
+               ▼
+    [run_plagiarism_check]  ←── JPlag v4+ (if enable_plagiarism=true)
+               │
+               ▼
+    For each student:
+         │
+         ├─ [compile_cpp]          (if enable_compilation=true)
+         │
+         ├─ [normalize_code]
+         │       │
+         │  SHA-256 hash ──► in cache? ──► reuse result
+         │       │                │
+         │       │            no  ▼
+         │       └──────► [llm_evaluate]   (if enable_llm=true)
+         │                    │
+         │              retry up to 3x + JSON validation
+         │
+         └─ Append row to resultados.csv
+```
+
+### Key components
+
+| Function | Responsibility |
+|---|---|
+| `extract_pdf_text` | Extracts text from the assignment PDF |
+| `compile_cpp` | Compiles the `.cpp` file with `g++` |
+| `run_plagiarism_check` | Runs JPlag and parses `overview.json` from the results zip |
+| `normalize_code` | Strips BOM, normalizes line endings and trailing whitespace for a stable hash |
+| `compute_evaluation_key` | SHA-256 of code + assignment + rubric used as cache key |
+| `llm_evaluate` | Sends prompt to the LLM, validates JSON, retries up to 3 times |
+| `clamp` | Constrains values to the 0.0–5.0 range |
+| `load_cache` / `save_cache` | Persists the evaluation cache to disk |
+
+---
+
+## Configuration (`config.ini`)
+
+```ini
+[steps]
+enable_compilation = true   # Compile code before evaluating
+enable_plagiarism  = false  # Enable plagiarism detection with JPlag
+enable_llm         = true   # Enable LLM-based evaluation
+
+[paths]
+jplag_jar = /path/to/jplag.jar  # JPlag v4+ JAR (only needed if enable_plagiarism=true)
+
+[llm]
+command = ollama   # LLM CLI command
+model   = llama3   # Model name to use
+
+[plagiarism]
+threshold = 0.7    # Similarity threshold to flag plagiarism (0.0–1.0)
+```
+
+---
+
+## Output (`resultados.csv`)
+
+| Column | Description |
+|---|---|
+| `Estudiante` | Student folder name |
+| `Compila` | `SI` / `NO` / `N/A` |
+| `ErrorCompilacion` | Compiler error message (if any) |
+| `Plagio` | `SI` / `NO` |
+| `ConQuien` | Name of the student flagged for similarity |
+| `Porcentaje` | Similarity percentage reported by JPlag |
+| `Logica` | Logic score (0.0–5.0) |
+| `Estructura` | Structure score (0.0–5.0) |
+| `Estilo` | Style score (0.0–5.0) |
+| `Total` | Locally computed average: `(Logica + Estructura + Estilo) / 3` |
+| `Comentario` | LLM feedback (main strength + suggested improvements) |
+
+---
+
+## Usage
+
+```bash
+python academic-pregrader.py <base_folder>
+```
+
+**Example:**
+
+```
+grading_session/
+├── enunciado.pdf
+├── rubrica.txt
+├── john_doe/
+│   └── homework1.cpp
+└── jane_smith/
+    └── homework1.cpp
+```
+
+```bash
+python src/academic-pregrader.py grading_session/
+```
+
+---
+
+## Requirements
+
+- Python 3.8+
+- `pdfplumber` (`pip install pdfplumber`)
+- `g++` available on the PATH
+- [Ollama](https://ollama.com/) installed and running locally
+- Java 11+ (only if `enable_plagiarism=true`)
+- [JPlag v4+](https://github.com/jplag/JPlag/releases) (only if `enable_plagiarism=true`)
+
+---
+
+## Best practices
+
+### Suggestions are only a starting point
+
+The scores generated by this tool are **automated suggestions**, not final grades. The language model evaluates code statically and may:
+
+- Miss subtle logic errors.
+- Be too strict or too lenient depending on context.
+- Misinterpret implicit requirements in the assignment.
+
+**The instructor must review every suggestion before publishing grades.**
+
+### On plagiarism detection
+
+The tool flags high-similarity pairs as **alerts**, not verdicts. A high similarity score may result from:
+
+- Actual plagiarism.
+- Common templates provided by the instructor.
+- Canonical solutions to the problem.
+
+Every plagiarism suspicion must be investigated with proper academic judgment.
+
+### Determinism and reproducibility
+
+- Given the same code, assignment, and rubric, the tool always produces **the same result** thanks to SHA-256 caching.
+- `nota_final` is always recomputed locally; the value returned by the LLM is ignored.
+- The LLM is called with `temperature=0` and `top-p=1` to maximize consistency.
+- To force a fresh re-evaluation, delete `.evaluation_cache.json`.
+
+### Recommended production configuration
+
+```ini
+[steps]
+enable_compilation = true
+enable_plagiarism  = true
+enable_llm         = true
+```
+
+With `enable_plagiarism=false` (the default), plagiarism detection is skipped and the `Plagio`, `ConQuien`, and `Porcentaje` columns will be empty.
+
