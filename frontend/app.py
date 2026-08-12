@@ -7,6 +7,7 @@ Docker:   docker-compose up --build
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import tempfile
@@ -130,7 +131,13 @@ def change_password():
 @app.route("/")
 @auth.login_required
 def index():
-    return render_template("index.html", is_admin=bool(auth.get_user(session["user"])["is_admin"]))
+    username = session["user"]
+    active_course = auth.get_user_active_course(username)
+    return render_template(
+        "index.html",
+        is_admin=bool(auth.get_user(username)["is_admin"]),
+        active_course=active_course["name"] if active_course else "",
+    )
 
 
 @app.route("/run", methods=["POST"])
@@ -414,6 +421,30 @@ def download_excel(job_id: str):
     )
 
 
+@app.route("/results/<job_id>", methods=["POST"])
+@auth.login_required
+def update_results(job_id: str):
+    """Persiste las notas/comentarios editados en la interfaz para las descargas."""
+    if job_id not in _results:
+        return jsonify({"ok": False, "error": "Job no encontrado."}), 404
+    data = request.get_json(silent=True)
+    if not isinstance(data, list):
+        return jsonify({"ok": False, "error": "Formato inválido."}), 400
+    cleaned = []
+    for item in data[:2000]:
+        if not isinstance(item, dict):
+            continue
+        cleaned.append({
+            "estudiante": str(item.get("estudiante", ""))[:300],
+            "compila":    str(item.get("compila", ""))[:4000],
+            "plagio":     str(item.get("plagio", ""))[:300],
+            "nota":       item.get("nota", ""),
+            "comentario": str(item.get("comentario", ""))[:5000],
+        })
+    _results[job_id] = cleaned
+    return jsonify({"ok": True, "count": len(cleaned)})
+
+
 # ==============================
 # CONFIGURACIÓN
 # ==============================
@@ -645,6 +676,7 @@ def admin_overview():
     return jsonify({
         "users": auth.get_users_overview(),
         "events": auth.get_events(limit=300),
+        "courses": auth.list_courses(),
     })
 
 
@@ -715,6 +747,146 @@ def admin_delete_user(username: str):
     if not auth.delete_user(uname):
         return jsonify({"error": "Usuario no encontrado."}), 404
     auth.log_event(session.get("user"), client_ip(), "admin_delete_user", detail=uname)
+    return jsonify({"ok": True})
+
+
+# ==============================
+# CURSOS / CLASES
+# ==============================
+
+_ORG_ID_RE = re.compile(r"^\d{6,15}$")
+
+
+def parse_class_list(text: str) -> list[dict]:
+    """Convierte la lista de clase pegada del Campus Virtual en estudiantes.
+
+    Formato esperado (columnas copiadas de la tabla del Campus): por cada
+    estudiante -> Nombre (APELLIDOS, Nombres), Username, OrgDefinedId (id
+    numérico), Rol y Fecha, separados por tabuladores y filas por saltos de
+    línea. Al copiar desde el navegador las celdas quedan separadas por TAB;
+    aquí normalizamos TAB a salto de línea y anclamos cada registro en el id
+    numérico, tomando el username y el nombre inmediatamente anteriores.
+    """
+    if not text:
+        return []
+    # Cada celda copiada de una tabla queda separada por TAB; la volvemos línea.
+    raw = text.replace("\t", "\n")
+    lines = [ln.strip() for ln in raw.splitlines()]
+    lines = [ln for ln in lines if ln]
+
+    students: list[dict] = []
+    seen: set[str] = set()
+    for i, line in enumerate(lines):
+        if not _ORG_ID_RE.match(line):
+            continue
+        org_id = line
+        username = lines[i - 1] if i - 1 >= 0 else ""
+        # El nombre es la línea previa que contiene coma (APELLIDOS, Nombres).
+        name = ""
+        for j in (i - 2, i - 3):
+            if j >= 0 and "," in lines[j] and not _ORG_ID_RE.match(lines[j]):
+                name = lines[j]
+                break
+        if not name and i - 2 >= 0:
+            name = lines[i - 2]
+        name = name.strip()
+        if not name or _ORG_ID_RE.match(name):
+            continue
+        if org_id in seen:
+            continue
+        seen.add(org_id)
+        students.append({
+            "name": name,
+            "username": username.strip(),
+            "org_id": org_id,
+        })
+    return students
+
+
+@app.route("/admin/api/courses", methods=["GET"])
+@auth.admin_required
+def admin_list_courses():
+    return jsonify({"ok": True, "courses": auth.list_courses()})
+
+
+@app.route("/admin/api/courses/preview", methods=["POST"])
+@auth.admin_required
+def admin_preview_course():
+    data = request.get_json(force=True) or {}
+    students = parse_class_list(str(data.get("class_list", "")))
+    return jsonify({"ok": True, "students": students, "count": len(students)})
+
+
+@app.route("/admin/api/courses", methods=["POST"])
+@auth.admin_required
+def admin_create_course():
+    data = request.get_json(force=True) or {}
+    name = str(data.get("name", "")).strip()
+    if not name:
+        return jsonify({"error": "El nombre del curso es obligatorio."}), 400
+    students = parse_class_list(str(data.get("class_list", "")))
+    if not students:
+        return jsonify({"error": "No se detectaron estudiantes en la lista pegada."}), 400
+    course_id = auth.create_course(name, session.get("user"), students)
+    auth.log_event(session.get("user"), client_ip(), "admin_create_course",
+                   detail=f"{name} ({len(students)} estudiantes)")
+    return jsonify({"ok": True, "id": course_id, "count": len(students)})
+
+
+@app.route("/admin/api/courses/<int:course_id>", methods=["GET"])
+@auth.admin_required
+def admin_get_course(course_id: int):
+    course = auth.get_course(course_id)
+    if not course:
+        return jsonify({"error": "Curso no encontrado."}), 404
+    course["students"] = auth.get_course_students(course_id)
+    return jsonify({"ok": True, "course": course})
+
+
+@app.route("/admin/api/courses/<int:course_id>", methods=["DELETE"])
+@auth.admin_required
+def admin_delete_course(course_id: int):
+    if not auth.delete_course(course_id):
+        return jsonify({"error": "Curso no encontrado."}), 404
+    auth.log_event(session.get("user"), client_ip(), "admin_delete_course", detail=str(course_id))
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/api/courses/<int:course_id>/students", methods=["POST"])
+@auth.admin_required
+def admin_update_course_students(course_id: int):
+    if not auth.get_course(course_id):
+        return jsonify({"error": "Curso no encontrado."}), 404
+    data = request.get_json(force=True) or {}
+    students = parse_class_list(str(data.get("class_list", "")))
+    if not students:
+        return jsonify({"error": "No se detectaron estudiantes en la lista pegada."}), 400
+    auth.set_course_students(course_id, students)
+    auth.log_event(session.get("user"), client_ip(), "admin_update_course_students",
+                   detail=f"{course_id} ({len(students)} estudiantes)")
+    return jsonify({"ok": True, "count": len(students)})
+
+
+@app.route("/admin/api/users/<username>/course", methods=["POST"])
+@auth.admin_required
+def admin_assign_course(username: str):
+    uname = username.strip().lower()
+    if not auth.get_user(uname):
+        return jsonify({"error": "Usuario no encontrado."}), 404
+    data = request.get_json(force=True) or {}
+    course_id = data.get("course_id")
+    if course_id in ("", None):
+        course_id = None
+    else:
+        try:
+            course_id = int(course_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Curso inválido."}), 400
+        if not auth.get_course(course_id):
+            return jsonify({"error": "Curso no encontrado."}), 404
+    auth.assign_user_course(uname, course_id)
+    auth.log_event(session.get("user"), client_ip(), "admin_assign_course",
+                   detail=f"{uname}:{course_id}")
     return jsonify({"ok": True})
 
 

@@ -116,6 +116,14 @@
     .header-title { font-size: .95rem; font-weight: 700; letter-spacing: -.025em; }
     .header-divider { width: 1px; height: 16px; background: var(--border-bright); flex-shrink: 0; }
     .header-sub  { font-size: .72rem; color: var(--text-3); }
+    .header-course {
+      display: inline-flex; align-items: center; gap: 6px; margin-left: 12px;
+      padding: 4px 10px; border-radius: 20px; font-size: .72rem; font-weight: 600;
+      background: rgba(90,103,214,.14); color: var(--accent-soft, #a5b4fc);
+      border: 1px solid var(--border-bright); white-space: nowrap;
+    }
+    .header-course svg { flex-shrink: 0; }
+    @media (max-width: 720px) { .header-course { display: none; } }
     .header-spacer { flex: 1; }
     .header-badge {
       display: inline-flex; align-items: center; gap: 5px;
@@ -446,6 +454,36 @@
     .stu-preview-btn:hover { border-color: var(--p1); color: var(--p3); background: rgba(90,103,214,.08); }
     .stu-preview-btn svg { width: 13px; height: 13px; }
 
+    /* ── Editable grade / comment ── */
+    .stu-grade-edit {
+      width: 58px; text-align: right; border: none; background: transparent;
+      font-family: var(--font); font-size: 1.65rem; font-weight: 800; line-height: 1;
+      letter-spacing: -.04em; color: inherit; padding: 2px 2px 2px 0; border-radius: var(--r-xs);
+      outline: none; transition: background .15s, box-shadow .15s; -moz-appearance: textfield;
+    }
+    .stu-grade-edit::-webkit-outer-spin-button, .stu-grade-edit::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .stu-grade-edit:hover  { background: var(--surface-3); }
+    .stu-grade-edit:focus  { background: var(--surface); box-shadow: 0 0 0 2px var(--p1); }
+    .stu-grade-edit:focus::after { content: ''; }
+    .stu-comment-edit {
+      font-size: .78rem; line-height: 1.6; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-left: 2px solid rgba(99,102,241,.4);
+      border-radius: 0 7px 7px 0; padding: 9px 12px; width: 100%; resize: vertical;
+      min-height: 56px; font-family: var(--font); outline: none; transition: border-color .15s, box-shadow .15s;
+    }
+    .stu-comment-edit:focus { border-color: var(--p1); box-shadow: 0 0 0 2px rgba(99,102,241,.12); }
+    .stu-comment-edit::placeholder { color: var(--text-3); }
+    .stu-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .stu-copy-btn {
+      background: var(--surface); border: 1px solid var(--border-bright); border-radius: var(--r-xs);
+      padding: 6px 12px; color: var(--text-2); font-family: var(--font); font-size: .72rem;
+      font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .18s;
+    }
+    .stu-copy-btn:hover { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+    .stu-copy-btn.copied { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+    .stu-copy-btn svg { width: 12px; height: 12px; }
+    .grade-edit-hint { font-size: .58rem; color: var(--text-3); text-align: right; margin-top: 2px; letter-spacing: .04em; }
+
     /* ── Settings ── */
     .settings-section { display: flex; flex-direction: column; gap: 9px; }
     .settings-section-title { font-size: .63rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--text-3); margin-bottom: 1px; display: flex; align-items: center; gap: 7px; }
@@ -654,6 +692,12 @@
     <span class="header-title">Academic Pregrader</span>
     <div class="header-divider"></div>
     <span class="header-sub">Pre-calificador académico</span>
+    {% if active_course %}
+    <span class="header-course" title="Curso activo asignado por el administrador">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      {{ active_course }}
+    </span>
+    {% endif %}
     <div class="header-spacer"></div>
     <button class="btn-gear btn-icon" id="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema">
       <svg class="ic-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -799,6 +843,9 @@
     let activeFilters     = new Set();
     let logVisible        = true;
     let _previewCodes     = [];
+    let _resultSeq        = 0;
+    let _lastRendered     = [];
+    let _syncTimer        = null;
 
     function toggleTheme() {
       const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
@@ -1098,6 +1145,7 @@
 
     function handleStudentResult(data) {
       completedStudents++; liveResults.push(data);
+      data._id = ++_resultSeq;
       const name  = data.estudiante || '';
       const tot   = parseFloat(data.nota);
       const cls   = gradeChipClass(tot);
@@ -1154,9 +1202,37 @@
     }
 
     function renderCardsFromResults(results) {
-      const headers = ['Estudiante','Compila','Plagio','Nota','Comentario','Codigo'];
-      const rows = results.map(r => [r.estudiante??'', r.compila??'', r.plagio??'', r.nota!==undefined?r.nota:'', r.comentario??'', r.codigo??'']);
-      renderCards(headers, rows);
+      _lastRendered = results;
+      renderStatsRow(results);
+      const grid = document.getElementById('students-grid');
+      grid.innerHTML = '';
+      _previewCodes = [];
+      results.forEach((res, ri) => grid.appendChild(buildStudentCard(res, ri)));
+    }
+
+    function computeStats(results) {
+      const count = results.length;
+      let avgNota = '—';
+      const vals = results.map(r => parseFloat(r.nota)).filter(n => !isNaN(n) && n >= 0);
+      if (vals.length) avgNota = (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
+      const compileCount = results.filter(r => (r.compila||'') === 'SI').length;
+      const plagioCount  = results.filter(r => (r.plagio ||'') !== '').length;
+      return { count, avgNota, compileCount, plagioCount };
+    }
+
+    function renderStatsRow(results) {
+      const { count, avgNota, compileCount, plagioCount } = computeStats(results);
+      document.getElementById('results-count').textContent = `${count} estudiante${count!==1?'s':''}`;
+      document.getElementById('stats-row').innerHTML = [
+        { val: avgNota, label: 'Promedio', color: 'linear-gradient(135deg,var(--p1),var(--p3))' },
+        { val: `${compileCount}/${count}`, label: 'Compilan', color: 'linear-gradient(135deg,#059669,var(--green))' },
+        { val: plagioCount, label: 'Posible plagio', color: 'linear-gradient(135deg,#b91c1c,var(--red))' },
+      ].map(s =>
+        `<div class="stat-item">
+          <div class="stat-value" style="background:${s.color};-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${s.val}</div>
+          <div class="stat-label">${s.label}</div>
+        </div>`
+      ).join('');
     }
 
     function getInitials(name) {
@@ -1176,84 +1252,150 @@
     function gradeColorClass(n) { if (isNaN(n)) return 'dim'; return n>=3.5?'hi':n>=2.5?'mid':'lo'; }
     function gradeBarColor(n)   { return n>=3.5?'var(--green)':n>=2.5?'var(--yellow)':'var(--red)'; }
 
-    function renderCards(headers, rows) {
-      const idxOf = h => headers.findIndex(x => x.toLowerCase() === h);
-      const ix = { estudiante:idxOf('estudiante'), compila:idxOf('compila'), plagio:idxOf('plagio'), nota:idxOf('nota'), comentario:idxOf('comentario'), codigo:idxOf('codigo') };
-      const count = rows.length;
+    function buildStudentCard(res, ri) {
+      const id         = res._id;
+      const nameRaw    = res.estudiante || '—';
+      const compilaRaw = res.compila    || '';
+      const plagioRaw  = res.plagio     || '';
+      const notaN      = parseFloat(res.nota);
+      const comentario = res.comentario || '';
+      const codigoRaw  = res.codigo     || '';
+      const barW       = (!isNaN(notaN)&&notaN>=0) ? Math.min(100,(notaN/5)*100).toFixed(1) : 0;
+      const notaCls    = gradeColorClass(notaN);
+      const notaVal    = isNaN(notaN) ? '' : notaN.toFixed(1);
+      const initials   = getInitials(nameRaw);
+      const avColor    = avatarColor(nameRaw);
 
-      document.getElementById('results-count').textContent = `${count} estudiante${count!==1?'s':''}`;
+      let badges = '';
+      if      (compilaRaw === 'SI')  badges += '<span class="stu-badge ok">Compila</span>';
+      else if (compilaRaw && compilaRaw !== 'N/A') badges += '<span class="stu-badge warn">Error compilación</span>';
+      else if (compilaRaw === 'N/A') badges += '<span class="stu-badge muted">N/A</span>';
+      if (plagioRaw) badges += `<span class="stu-badge amber" title="${esc(plagioRaw)}">${esc(plagioRaw)}</span>`;
 
-      let avgNota = '—';
-      if (ix.nota !== -1) {
-        const vals = rows.map(r => parseFloat(r[ix.nota])).filter(n => !isNaN(n) && n >= 0);
-        if (vals.length) avgNota = (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
-      }
-      const compileCount = ix.compila !== -1 ? rows.filter(r=>(r[ix.compila]||'')==='SI').length : null;
-      const plagioCount  = ix.plagio  !== -1 ? rows.filter(r=>(r[ix.plagio] ||'')!==''  ).length : null;
+      const errHtml = (compilaRaw && compilaRaw !== 'SI' && compilaRaw !== 'N/A')
+        ? `<div class="stu-error">${esc(compilaRaw.slice(0,600))}${compilaRaw.length>600?'\n…':''}</div>` : '';
 
-      document.getElementById('stats-row').innerHTML = [
-        { val: avgNota,      label: 'Promedio',       color: 'linear-gradient(135deg,var(--p1),var(--p3))' },
-        { val: compileCount !== null ? `${compileCount}/${count}` : '—', label: 'Compilan', color: 'linear-gradient(135deg,#059669,var(--green))' },
-        { val: plagioCount  !== null ? plagioCount : '—', label: 'Posible plagio', color: 'linear-gradient(135deg,#b91c1c,var(--red))' },
-      ].map(s =>
-        `<div class="stat-item">
-          <div class="stat-value" style="background:${s.color};-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${s.val}</div>
-          <div class="stat-label">${s.label}</div>
-        </div>`
-      ).join('');
+      const codeIdx = _previewCodes.length;
+      _previewCodes.push({ name: nameRaw, code: codigoRaw });
+      const previewHtml = codigoRaw
+        ? `<button class="stu-preview-btn" onclick="openCodePreview(${codeIdx})">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+             Ver código
+           </button>` : '';
 
-      const grid = document.getElementById('students-grid');
-      grid.innerHTML = '';
-      _previewCodes = [];
-
-      rows.forEach((row, ri) => {
-        const nameRaw    = ix.estudiante !== -1 ? (row[ix.estudiante]||'—') : '—';
-        const compilaRaw = ix.compila    !== -1 ? (row[ix.compila]   ||'')  : '';
-        const plagioRaw  = ix.plagio     !== -1 ? (row[ix.plagio]    ||'')  : '';
-        const notaN      = ix.nota       !== -1 ? parseFloat(row[ix.nota])  : NaN;
-        const comentario = ix.comentario !== -1 ? (row[ix.comentario]||'')  : '';
-        const codigoRaw  = ix.codigo     !== -1 ? (row[ix.codigo]    ||'')  : '';
-        const barW       = (!isNaN(notaN)&&notaN>=0) ? Math.min(100,(notaN/5)*100).toFixed(1) : 0;
-        const notaCls    = gradeColorClass(notaN);
-        const notaDisp   = isNaN(notaN) ? '—' : notaN.toFixed(1);
-        const initials   = getInitials(nameRaw);
-        const avColor    = avatarColor(nameRaw);
-
-        let badges = '';
-        if      (compilaRaw === 'SI')  badges += '<span class="stu-badge ok">Compila</span>';
-        else if (compilaRaw && compilaRaw !== 'N/A') badges += '<span class="stu-badge warn">Error compilación</span>';
-        else if (compilaRaw === 'N/A') badges += '<span class="stu-badge muted">N/A</span>';
-        if (plagioRaw) badges += `<span class="stu-badge amber" title="${esc(plagioRaw)}">${esc(plagioRaw)}</span>`;
-
-        const commentHtml = comentario
-          ? `<div class="stu-comment-block"><div class="stu-comment-label">Evaluador</div><div class="stu-comment">${esc(comentario)}</div></div>` : '';
-        const errHtml = (compilaRaw && compilaRaw !== 'SI' && compilaRaw !== 'N/A')
-          ? `<div class="stu-error">${esc(compilaRaw.slice(0,600))}${compilaRaw.length>600?'\n…':''}</div>` : '';
-
-        const codeIdx = _previewCodes.length;
-        _previewCodes.push({ name: nameRaw, code: codigoRaw });
-        const previewHtml = codigoRaw
-          ? `<button class="stu-preview-btn" onclick="openCodePreview(${codeIdx})">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-               Ver código
-             </button>` : '';
-
-        const card = document.createElement('div');
-        card.className = 'stu-card fade-in';
-        card.style.animationDelay = Math.min(ri*35,500) + 'ms';
-        card.innerHTML = `
-          <div class="stu-card-main">
-            <div class="stu-avatar" style="background:${avColor}">${esc(initials)}</div>
-            <div class="stu-info">
-              <div class="stu-name">${esc(nameRaw)}</div>
-              <div class="stu-bar-wrap"><div class="stu-bar" style="width:${barW}%;background:${isNaN(notaN)?'var(--text-3)':gradeBarColor(notaN)}"></div></div>
-            </div>
-            <div class="stu-grade-big ${notaCls}">${esc(notaDisp)}</div>
+      const card = document.createElement('div');
+      card.className = 'stu-card fade-in';
+      card.dataset.id = id;
+      card.style.animationDelay = Math.min(ri*35,500) + 'ms';
+      card.innerHTML = `
+        <div class="stu-card-main">
+          <div class="stu-avatar" style="background:${avColor}">${esc(initials)}</div>
+          <div class="stu-info">
+            <div class="stu-name">${esc(nameRaw)}</div>
+            <div class="stu-bar-wrap"><div class="stu-bar" id="bar-${id}" style="width:${barW}%;background:${isNaN(notaN)?'var(--text-3)':gradeBarColor(notaN)}"></div></div>
           </div>
-          ${badges ? `<div class="stu-badges">${badges}</div>` : ''}
-          ${commentHtml}${errHtml}${previewHtml}`;
-        grid.appendChild(card);
-      });
+          <div>
+            <div class="stu-grade-big ${notaCls}" id="grade-wrap-${id}">
+              <input type="number" class="stu-grade-edit" id="grade-input-${id}" min="0" max="5" step="0.1"
+                     value="${notaVal}" aria-label="Nota de ${esc(nameRaw)}"
+                     oninput="onGradeEdit(${id}, this.value)" onblur="onGradeBlur(${id}, this)" />
+            </div>
+            <div class="grade-edit-hint">de 5.0 · editable</div>
+          </div>
+        </div>
+        ${badges ? `<div class="stu-badges">${badges}</div>` : ''}
+        <div class="stu-comment-block">
+          <div class="stu-comment-label">Evaluador · editable</div>
+          <textarea class="stu-comment-edit" rows="2" placeholder="Sin comentario. Escribe uno para el estudiante…"
+                    aria-label="Comentario de ${esc(nameRaw)}"
+                    oninput="onCommentEdit(${id}, this.value)">${esc(comentario)}</textarea>
+        </div>
+        ${errHtml}
+        <div class="stu-card-actions">
+          <button class="stu-copy-btn" id="copy-${id}" onclick="copyStudent(${id})" title="Copiar nota (y comentario) para pegar en el Campus Virtual">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5H6z"/><path d="M2 5a2 2 0 0 1 2-2v1.5A.5.5 0 0 0 3.5 5v9a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5H12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/></svg>
+            Copiar nota
+          </button>
+          ${previewHtml}
+        </div>`;
+      return card;
+    }
+
+    // ── Edición en vivo de nota / comentario ──
+    function findResult(id) { return liveResults.find(r => r._id === id); }
+
+    function updateGradeVisual(id, nota) {
+      const n = parseFloat(nota);
+      const wrap = document.getElementById('grade-wrap-' + id);
+      if (wrap) wrap.className = 'stu-grade-big ' + gradeColorClass(n);
+      const bar = document.getElementById('bar-' + id);
+      if (bar) {
+        const w = (!isNaN(n) && n >= 0) ? Math.min(100, (n/5)*100).toFixed(1) : 0;
+        bar.style.width = w + '%';
+        bar.style.background = isNaN(n) ? 'var(--text-3)' : gradeBarColor(n);
+      }
+    }
+
+    function onGradeEdit(id, val) {
+      const res = findResult(id);
+      if (!res) return;
+      let n = parseFloat(val);
+      if (isNaN(n)) { res.nota = ''; }
+      else { n = Math.max(0, Math.min(5, n)); res.nota = n; }
+      updateGradeVisual(id, res.nota);
+      renderStatsRow(_lastRendered);
+      scheduleSync();
+    }
+
+    function onGradeBlur(id, input) {
+      const res = findResult(id);
+      if (!res) return;
+      const n = parseFloat(res.nota);
+      input.value = isNaN(n) ? '' : n.toFixed(1);
+    }
+
+    function onCommentEdit(id, val) {
+      const res = findResult(id);
+      if (!res) return;
+      res.comentario = val;
+      scheduleSync();
+    }
+
+    async function copyStudent(id) {
+      const res = findResult(id);
+      if (!res) return;
+      const n = parseFloat(res.nota);
+      const nota = isNaN(n) ? '' : n.toFixed(1);
+      const text = res.comentario ? `${nota}\t${res.comentario}` : nota;
+      try {
+        await navigator.clipboard.writeText(text);
+        const btn = document.getElementById('copy-' + id);
+        if (btn) {
+          btn.classList.add('copied');
+          const label = btn.lastChild;
+          label.textContent = ' Copiado';
+          setTimeout(() => { btn.classList.remove('copied'); label.textContent = ' Copiar nota'; }, 1800);
+        }
+      } catch (e) { console.warn('Copy failed:', e); }
+    }
+
+    function scheduleSync() {
+      clearTimeout(_syncTimer);
+      _syncTimer = setTimeout(syncResults, 700);
+    }
+
+    async function syncResults() {
+      if (!currentJobId) return;
+      try {
+        await fetch(`/results/${currentJobId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(liveResults.map(r => ({
+            estudiante: r.estudiante, compila: r.compila, plagio: r.plagio,
+            nota: r.nota, comentario: r.comentario,
+          }))),
+        });
+      } catch (e) { console.warn('Sync failed:', e); }
     }
 
     function lineClass(text) {
@@ -1282,8 +1424,14 @@
     function setStatusText(t)       { document.getElementById('status-text').textContent = t; }
     function setStatusBadge(t, cls) { const b = document.getElementById('status-badge'); b.textContent = t; b.className = 'status-badge ' + cls; }
 
-    function downloadCSV()   { if (currentJobId) window.location.href = `/download/${currentJobId}`; }
-    function downloadExcel() { if (currentJobId) window.location.href = `/download/${currentJobId}/excel`; }
+    function downloadCSV()   { if (currentJobId) flushAndDownload(`/download/${currentJobId}`); }
+    function downloadExcel() { if (currentJobId) flushAndDownload(`/download/${currentJobId}/excel`); }
+
+    async function flushAndDownload(url) {
+      clearTimeout(_syncTimer);
+      await syncResults();
+      window.location.href = url;
+    }
 
     // ── Code preview ──
     function highlightCodeFiles(code) {

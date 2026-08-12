@@ -32,6 +32,7 @@ az account set --subscription "$SUBSCRIPTION_ID"
 az extension add --name containerapp --upgrade -y
 az provider register --namespace Microsoft.App
 az provider register --namespace Microsoft.OperationalInsights
+az provider register --namespace Microsoft.KeyVault --wait
 
 echo "==> Resource group"
 az group create -n "$RG" -l "$LOCATION" -o none

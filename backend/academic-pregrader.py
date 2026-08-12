@@ -386,8 +386,7 @@ _EVAL_RULES = """REGLAS:
 - Ignora completamente: estilo, indentación, nombres de variables, comentarios, optimizaciones.
 - Sé generoso: solución que resuelve el problema en esencia → nota ≥ 4.0.
 - Solo baja de 3.0 si hay errores lógicos graves o funcionalidad central ausente.
-- Si la nota es 5.0, el campo "comentario" debe ser "" (string vacío).
-- comentario: 1-2 frases si la nota es < 5.0. Qué funciona y qué falla. Sin mencionar estilo.
+- comentario: SIEMPRE 1-2 frases, incluso si la nota es 5.0. Si es 5.0, resume brevemente qué resolvió bien. Si es < 5.0, qué funciona y qué falla. Sin mencionar estilo.
 
 ESCALA DE REFERENCIA:
 5.0 → resuelve correctamente todos los casos del enunciado
@@ -781,7 +780,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
             except Exception:
                 logica = 0.0
 
-            comentario = "" if logica == 5.0 else resp.get("comentario", "")
+            comentario = resp.get("comentario", "")
             log("  -> Evaluación completada. Nota: " + str(logica))
         else:
             log("  -> Evaluación LLM omitida")
