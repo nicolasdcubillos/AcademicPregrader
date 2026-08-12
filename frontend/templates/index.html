@@ -204,13 +204,14 @@
     .field-hint  { font-size: .69rem; color: var(--text-3); margin-top: 6px; }
 
     /* ── Upload ── */
-    .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 560px) { .upload-grid { grid-template-columns: 1fr; } }
+    .upload-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    @media (max-width: 560px) { .upload-grid { grid-template-columns: minmax(0, 1fr); } }
     .upload-zone {
       position: relative; border: 2px dashed var(--border-bright);
       border-radius: var(--r-sm); padding: 28px 18px 22px;
       display: flex; flex-direction: column; align-items: center;
       gap: 8px; cursor: pointer; text-align: center;
+      min-width: 0; max-width: 100%;
       transition: border-color .2s, background .2s, box-shadow .2s; user-select: none;
     }
     .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; z-index: 2; }
@@ -234,7 +235,7 @@
     .upload-hint { font-size: .68rem; color: var(--text-3); line-height: 1.45; }
     .upload-filename {
       font-size: .7rem; font-family: var(--mono); color: var(--green); font-weight: 500;
-      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      width: 100%; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       padding: 3px 10px; background: rgba(16,185,129,.09); border: 1px solid rgba(16,185,129,.2);
       border-radius: 99px; display: none;
     }
