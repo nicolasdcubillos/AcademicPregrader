@@ -28,7 +28,7 @@ if hasattr(sys.stderr, 'reconfigure'):
 LANG_CONFIG = {
     "cpp":    {"src_ext": (".cpp", ".cc", ".cxx"), "jplag": "cpp",     "compile": "cpp"},
     "java":   {"src_ext": (".java",),               "jplag": "java",    "compile": "java"},
-    "python": {"src_ext": (".py",),                 "jplag": "python3", "compile": "python"},
+    "python": {"src_ext": (".py", ".ipynb"),        "jplag": "python3", "compile": "python"},
     "pdf":    {"src_ext": (".pdf",),                "jplag": "text",    "compile": None},
 }
 # Orden de prioridad para detección automática
@@ -131,6 +131,31 @@ def run(cmd, input_text=None):
 # EXTRACCIÓN DE TEXTO
 # ==============================
 
+def extract_notebook_source(path) -> str:
+    """Extrae el código (y markdown como comentarios) de un Jupyter Notebook."""
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        nb = json.load(fh)
+    # nbformat v4 usa "cells"; v3 anida celdas en "worksheets".
+    cells = nb.get("cells")
+    if cells is None:
+        cells = []
+        for ws in nb.get("worksheets", []):
+            cells.extend(ws.get("cells", []))
+    parts = []
+    for cell in cells:
+        src = cell.get("source", cell.get("input", ""))
+        if isinstance(src, list):
+            src = "".join(src)
+        src = src.strip()
+        if not src:
+            continue
+        if cell.get("cell_type") == "code":
+            parts.append(src)
+        elif cell.get("cell_type") == "markdown":
+            parts.append("\n".join("# " + line for line in src.splitlines()))
+    return "\n\n".join(parts)
+
+
 def extract_pdf_text(pdf_path) -> str:
     """Extrae texto de un PDF (enunciado o entrega)."""
     if not os.path.exists(pdf_path):
@@ -156,7 +181,10 @@ def extract_submission_text(files: list, lang: str) -> str:
         parts = []
         for f in files:
             try:
-                content = f.read_text(encoding="utf-8", errors="replace")
+                if f.suffix.lower() == ".ipynb":
+                    content = extract_notebook_source(str(f))
+                else:
+                    content = f.read_text(encoding="utf-8", errors="replace")
                 parts.append(f"// --- {f.name} ---\n{normalize_code(content)}")
             except Exception as e:
                 parts.append(f"// Error leyendo {f.name}: {e}")
@@ -186,9 +214,19 @@ def compile_submission(carpeta: Path, files: list, lang: str) -> tuple:
     elif lang == "python":
         errors = []
         for f in files[:5]:  # verificar hasta 5 archivos principales
-            result = run(["python3", "-m", "py_compile", str(f)])
-            if result.returncode != 0:
-                errors.append(result.stderr.strip())
+            if f.suffix.lower() == ".ipynb":
+                # Los notebooks no se compilan con py_compile: validamos sintaxis
+                # del código extraído de las celdas.
+                try:
+                    compile(extract_notebook_source(str(f)), str(f), "exec")
+                except SyntaxError as e:
+                    errors.append(f"{f.name}: {e}")
+                except Exception as e:
+                    errors.append(f"{f.name}: {e}")
+            else:
+                result = run(["python3", "-m", "py_compile", str(f)])
+                if result.returncode != 0:
+                    errors.append(result.stderr.strip())
         return (len(errors) == 0, "\n".join(errors))
 
     # pdf y desconocidos no compilan
