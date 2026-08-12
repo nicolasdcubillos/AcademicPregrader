@@ -309,6 +309,8 @@
             <label style="font-size:13px;color:var(--text-2);">Filtrar por usuario</label>
             <select id="eventUserFilter" onchange="renderEvents()"><option value="">Todos</option></select>
             <span id="eventCount" class="muted" style="font-size:12px;"></span>
+            <span style="flex:1;"></span>
+            <button class="btn btn-danger" onclick="clearGradeDownloadEvents()">Borrar calificaciones y descargas</button>
           </div>
           <div class="table-wrap">
             <table id="eventsTable">
@@ -372,6 +374,7 @@
       admin_reset_password: "Reinició clave", admin_set_role: "Cambió rol", admin_delete_user: "Eliminó usuario",
       admin_create_course: "Creó curso", admin_delete_course: "Eliminó curso",
       admin_update_course_students: "Actualizó roster", admin_assign_course: "Asignó curso",
+      download_campus: "Descargó Campus", admin_clear_events: "Limpió actividad",
     };
 
     function toast(html, ms = 9000) {
@@ -449,16 +452,27 @@
     }
 
     function renderStats(data) {
-      const totalGrades = data.users.reduce((a, u) => a + u.grade_count, 0);
-      const totalDownloads = data.users.reduce((a, u) => a + u.download_count, 0);
-      const blocked = data.users.filter(u => u.is_blocked).length;
+      const users = data.users || [];
+      const courses = data.courses || [];
+      const events = data.events || [];
+      const totalGrades    = users.reduce((a, u) => a + u.grade_count, 0);
+      const totalDownloads = users.reduce((a, u) => a + u.download_count, 0);
+      const blocked        = users.filter(u => u.is_blocked).length;
+      const activeGraders  = users.filter(u => u.course_id).length;
+      const totalStudents  = courses.reduce((a, c) => a + (c.student_count || 0), 0);
+      const failedLogins   = events.filter(e => e.event_type === "login_failed").length;
+      const avgGrades      = users.length ? (totalGrades / users.length).toFixed(1) : "0";
       const el = document.getElementById("stats");
       const cards = [
-        ["Usuarios", data.users.length],
-        ["Bloqueados", blocked],
+        ["Usuarios", users.length],
+        ["Calificadores con curso", activeGraders],
+        ["Cursos", courses.length],
+        ["Estudiantes en cursos", totalStudents],
         ["Calificaciones", totalGrades],
+        ["Prom. calif./usuario", avgGrades],
         ["Descargas", totalDownloads],
-        ["Eventos", data.events.length],
+        ["Logins fallidos", failedLogins],
+        ["Bloqueados", blocked],
       ];
       el.innerHTML = cards.map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
     }
@@ -567,6 +581,15 @@
       sel.innerHTML = '<option value="">Todos</option>' +
         names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
       if (names.includes(cur)) sel.value = cur;
+    }
+
+    async function clearGradeDownloadEvents() {
+      if (!confirm("¿Borrar todos los eventos de calificaciones y descargas? Esto reinicia esos contadores y no se puede deshacer.")) return;
+      try {
+        const r = await api("/admin/api/events/clear", { method: "POST" });
+        toast(`Se borraron ${r.deleted} evento(s) de calificaciones y descargas.`);
+        load();
+      } catch (e) { toast("Error: " + esc(e.message)); }
     }
 
     function renderEvents(events) {

@@ -351,6 +351,19 @@ def get_events(limit: int = 200, username: str | None = None) -> list[dict]:
     return _execute("SELECT * FROM events ORDER BY id DESC LIMIT %s", (limit,), fetch="all")
 
 
+def delete_events(event_types: list[str]) -> int:
+    """Elimina los eventos de los tipos indicados. Devuelve cuántos borró."""
+    init_db()
+    if not event_types:
+        return 0
+    placeholders = ",".join(["%s"] * len(event_types))
+    return _execute(
+        f"DELETE FROM events WHERE event_type IN ({placeholders})",
+        tuple(event_types),
+        fetch="rowcount",
+    )
+
+
 def get_users_overview() -> list[dict]:
     """Usuarios con métricas agregadas para el dashboard."""
     init_db()
