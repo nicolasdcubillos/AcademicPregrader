@@ -132,11 +132,17 @@ def change_password():
 @auth.login_required
 def index():
     username = session["user"]
+    user = auth.get_user(username)
+    is_admin = bool(user["is_admin"])
     active_course = auth.get_user_active_course(username)
+    # Los admins eligen libremente cualquier curso; el resto usa el asignado.
+    courses = auth.list_courses() if is_admin else []
     return render_template(
         "index.html",
-        is_admin=bool(auth.get_user(username)["is_admin"]),
+        is_admin=is_admin,
         active_course=active_course["name"] if active_course else "",
+        active_course_id=active_course["id"] if active_course else "",
+        courses=courses,
     )
 
 
@@ -887,6 +893,28 @@ def admin_assign_course(username: str):
     auth.assign_user_course(uname, course_id)
     auth.log_event(session.get("user"), client_ip(), "admin_assign_course",
                    detail=f"{uname}:{course_id}")
+    return jsonify({"ok": True})
+
+
+@app.route("/course/select", methods=["POST"])
+@auth.login_required
+def select_course():
+    """Un admin elige libremente el curso que está calificando."""
+    username = session["user"]
+    if not auth.get_user(username)["is_admin"]:
+        return jsonify({"error": "Solo los administradores pueden elegir su curso."}), 403
+    data = request.get_json(silent=True) or {}
+    course_id = data.get("course_id")
+    if course_id in ("", None):
+        course_id = None
+    else:
+        try:
+            course_id = int(course_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Curso inválido."}), 400
+        if not auth.get_course(course_id):
+            return jsonify({"error": "Curso no encontrado."}), 404
+    auth.assign_user_course(username, course_id)
     return jsonify({"ok": True})
 
 
