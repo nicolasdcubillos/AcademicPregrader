@@ -1,0 +1,14 @@
+services:
+  pregrader:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Config (API keys, toggles, etc.) persists across container restarts
+      - pregrader_config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PREGRADER_CONFIG_DIR=/app/config
+
+volumes:
+  pregrader_config:

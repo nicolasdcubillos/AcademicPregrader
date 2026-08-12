@@ -1,0 +1,32 @@
+# Keep the build context small and never bake secrets into the image
+.git
+.gitignore
+.github
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+
+# Local config contains secrets (API keys) — set them at runtime instead
+backend/config.ini
+backend/users.db
+backend/.secret_key
+
+# Local/dev artifacts
+*.zip
+resultados.csv
+resultados.xlsx
+.evaluation_cache.json
+.jplag_results.zip
+
+# Docs / misc
+README.md
+LICENSE
+start.bat
+docker-compose.yml
+infra
