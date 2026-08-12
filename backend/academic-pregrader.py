@@ -617,6 +617,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
     jplag_jar          = config.get("paths",      "jplag_jar",  fallback="")
     plagiarism_threshold = config.getfloat("plagiarism", "threshold", fallback=0.7)
     submission_language  = config.get("submission", "language", fallback="auto")
+    comment_on_max       = config.getboolean("submission", "comment_on_max", fallback=False)
 
     cache_path = base_path / ".evaluation_cache.json"
     cache = load_cache(cache_path) if enable_cache else {}
@@ -781,6 +782,8 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                 logica = 0.0
 
             comentario = resp.get("comentario", "")
+            if logica == 5.0 and not comment_on_max:
+                comentario = ""
             log("  -> Evaluación completada. Nota: " + str(logica))
         else:
             log("  -> Evaluación LLM omitida")
