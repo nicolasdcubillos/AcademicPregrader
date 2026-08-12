@@ -89,8 +89,22 @@ _DDL = {
                 is_admin             INTEGER NOT NULL DEFAULT 0,
                 is_blocked           INTEGER NOT NULL DEFAULT 0,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
+                course_id            INTEGER,
                 created_at           TEXT NOT NULL DEFAULT (datetime('now')),
                 last_login           TEXT
+            )""",
+        """CREATE TABLE IF NOT EXISTS courses (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL,
+                created_by TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )""",
+        """CREATE TABLE IF NOT EXISTS course_students (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id       INTEGER NOT NULL,
+                org_id          TEXT,
+                campus_username TEXT,
+                full_name       TEXT NOT NULL
             )""",
         """CREATE TABLE IF NOT EXISTS events (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -112,8 +126,22 @@ _DDL = {
                 is_admin             INTEGER NOT NULL DEFAULT 0,
                 is_blocked           INTEGER NOT NULL DEFAULT 0,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
+                course_id            INTEGER,
                 created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 last_login           TIMESTAMPTZ
+            )""",
+        """CREATE TABLE IF NOT EXISTS courses (
+                id         BIGSERIAL PRIMARY KEY,
+                name       TEXT NOT NULL,
+                created_by TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""",
+        """CREATE TABLE IF NOT EXISTS course_students (
+                id              BIGSERIAL PRIMARY KEY,
+                course_id       BIGINT NOT NULL,
+                org_id          TEXT,
+                campus_username TEXT,
+                full_name       TEXT NOT NULL
             )""",
         """CREATE TABLE IF NOT EXISTS events (
                 id         BIGSERIAL PRIMARY KEY,
@@ -148,9 +176,13 @@ def init_db() -> None:
                 ("is_blocked", "ALTER TABLE users ADD COLUMN is_blocked INTEGER NOT NULL DEFAULT 0"),
                 ("must_change_password", "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"),
                 ("last_login", "ALTER TABLE users ADD COLUMN last_login TEXT"),
+                ("course_id", "ALTER TABLE users ADD COLUMN course_id INTEGER"),
             ):
                 if col not in existing:
                     cur.execute(ddl)
+        else:
+            # Migración PostgreSQL: agrega la columna si el despliegue es previo a cursos.
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_id INTEGER")
         conn.commit()
         _DB_READY = True
     finally:
@@ -328,6 +360,7 @@ def get_users_overview() -> list[dict]:
         "FROM events GROUP BY username, event_type",
         fetch="all",
     )
+    courses = {c["id"]: c["name"] for c in _execute("SELECT id, name FROM courses", fetch="all")}
     agg: dict[str, dict] = {}
     for s in stats:
         agg.setdefault(s["username"] or "", {})[s["event_type"]] = s["n"]
@@ -338,8 +371,130 @@ def get_users_overview() -> list[dict]:
         u["login_count"] = counts.get("login", 0)
         u["grade_count"] = counts.get("grade_run", 0)
         u["download_count"] = counts.get("download_csv", 0) + counts.get("download_excel", 0)
+        u["course_name"] = courses.get(u.get("course_id"))
         result.append(u)
     return result
+
+
+# ── Cursos / clases ──────────────────────────────────────────────────────────
+
+def create_course(name: str, created_by: str, students: list[dict]) -> int:
+    """Crea un curso con su roster (lista de {name, username, org_id}). Devuelve el id."""
+    init_db()
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        if _BACKEND == "postgres":
+            cur.execute("INSERT INTO courses (name, created_by) VALUES (%s, %s) RETURNING id", (name, created_by))
+            course_id = cur.fetchone()["id"]
+        else:
+            cur.execute("INSERT INTO courses (name, created_by) VALUES (?, ?)", (name, created_by))
+            course_id = cur.lastrowid
+        _insert_students(cur, course_id, students)
+        conn.commit()
+        return course_id
+    finally:
+        conn.close()
+
+
+def _insert_students(cur, course_id: int, students: list[dict]) -> None:
+    sql = _q(
+        "INSERT INTO course_students (course_id, org_id, campus_username, full_name) "
+        "VALUES (%s, %s, %s, %s)"
+    )
+    for s in students:
+        name = (s.get("name") or "").strip()
+        if not name:
+            continue
+        cur.execute(sql, (
+            course_id,
+            (s.get("org_id") or "").strip(),
+            (s.get("username") or "").strip(),
+            name,
+        ))
+
+
+def set_course_students(course_id: int, students: list[dict]) -> None:
+    """Reemplaza por completo el roster de un curso."""
+    init_db()
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(_q("DELETE FROM course_students WHERE course_id = %s"), (course_id,))
+        _insert_students(cur, course_id, students)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_courses() -> list[dict]:
+    """Cursos con número de estudiantes y calificadores asignados."""
+    init_db()
+    courses = _execute("SELECT * FROM courses ORDER BY name", fetch="all")
+    counts = _execute(
+        "SELECT course_id, COUNT(*) AS n FROM course_students GROUP BY course_id",
+        fetch="all",
+    )
+    graders = _execute(
+        "SELECT username, course_id FROM users WHERE course_id IS NOT NULL ORDER BY username",
+        fetch="all",
+    )
+    cmap = {c["course_id"]: c["n"] for c in counts}
+    gmap: dict[int, list[str]] = {}
+    for g in graders:
+        gmap.setdefault(g["course_id"], []).append(g["username"])
+    for c in courses:
+        c["student_count"] = cmap.get(c["id"], 0)
+        c["graders"] = gmap.get(c["id"], [])
+    return courses
+
+
+def get_course(course_id: int) -> dict | None:
+    init_db()
+    return _execute("SELECT * FROM courses WHERE id = %s", (course_id,), fetch="one")
+
+
+def get_course_students(course_id: int) -> list[dict]:
+    init_db()
+    return _execute(
+        "SELECT * FROM course_students WHERE course_id = %s ORDER BY full_name",
+        (course_id,),
+        fetch="all",
+    )
+
+
+def delete_course(course_id: int) -> bool:
+    init_db()
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(_q("UPDATE users SET course_id = NULL WHERE course_id = %s"), (course_id,))
+        cur.execute(_q("DELETE FROM course_students WHERE course_id = %s"), (course_id,))
+        cur.execute(_q("DELETE FROM courses WHERE id = %s"), (course_id,))
+        rc = cur.rowcount
+        conn.commit()
+        return rc > 0
+    finally:
+        conn.close()
+
+
+def assign_user_course(username: str, course_id) -> bool:
+    """Fija el curso activo del calificador (o lo quita con course_id=None)."""
+    init_db()
+    rc = _execute(
+        "UPDATE users SET course_id = %s WHERE username = %s",
+        (course_id, username.strip().lower()),
+        fetch="rowcount",
+    )
+    return bool(rc)
+
+
+def get_user_active_course(username: str) -> dict | None:
+    """Devuelve el curso activo del usuario, o None."""
+    user = get_user(username)
+    if not user or not user.get("course_id"):
+        return None
+    return get_course(user["course_id"])
 
 
 # ── Protección de rutas ──────────────────────────────────────────────────────
