@@ -222,6 +222,12 @@
           <input id="cfgWorkers" type="number" min="1" max="16" step="1" style="width:100%;" />
         </div>
       </div>
+      <div style="margin-top:16px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);">
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="cfgCampusExport" style="width:auto;" /> Habilitar exportación al Campus Virtual (D2L) para los calificadores
+        </label>
+        <p class="muted" style="font-size:12px;margin-top:6px;">Muestra el botón «Campus Virtual» en los resultados para descargar el CSV de importación de notas. Desactivado por defecto.</p>
+      </div>
       <div style="margin-top:16px;">
         <label style="display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;">Instrucción de sistema</label>
         <textarea id="cfgSysInstr" rows="3" placeholder="(vacío = instrucción por defecto)" style="width:100%;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:13px;padding:8px 10px;outline:none;resize:vertical;"></textarea>
@@ -414,6 +420,7 @@
         document.getElementById("cfgOpenaiEnabled").checked = c.openai_enabled ?? true;
         document.getElementById("cfgJplag").value     = c.jplag_jar   || "";
         document.getElementById("cfgWorkers").value   = c.max_workers ?? 4;
+        document.getElementById("cfgCampusExport").checked = c.campus_export_enabled ?? false;
         document.getElementById("cfgSysInstr").value  = c.system_instruction || "";
         document.getElementById("cfgEvalRules").value = c.eval_rules || "";
       } catch (e) { console.warn("Config load failed:", e); }
@@ -427,6 +434,7 @@
         openai_enabled:     document.getElementById("cfgOpenaiEnabled").checked,
         jplag_jar:          document.getElementById("cfgJplag").value.trim(),
         max_workers:        parseInt(document.getElementById("cfgWorkers").value) || 4,
+        campus_export_enabled: document.getElementById("cfgCampusExport").checked,
         system_instruction: document.getElementById("cfgSysInstr").value.trim(),
         eval_rules:         document.getElementById("cfgEvalRules").value.trim(),
       };
