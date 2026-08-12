@@ -463,6 +463,9 @@ def download_campus(job_id: str):
     if not results:
         return "No hay resultados para este job.", 404
 
+    if not _read_global_cfg().getboolean("features", "campus_export_enabled", fallback=False):
+        return jsonify({"error": "La exportación al Campus Virtual está deshabilitada por el administrador."}), 403
+
     course = auth.get_user_active_course(session["user"])
     if not course:
         return jsonify({"error": "No tienes un curso activo. Selecciona o pide que te asignen uno."}), 400
@@ -634,6 +637,7 @@ def get_config():
         "openai_has_api_key": _has_api_key(cfg, "openai"),
         "gemini_available": _provider_is_available(cfg, "gemini"),
         "openai_available": _provider_is_available(cfg, "openai"),
+        "campus_export_enabled": cfg.getboolean("features", "campus_export_enabled", fallback=False),
     })
 
 
@@ -726,6 +730,7 @@ def admin_get_config():
         "openai_enabled":     cfg.getboolean("llm", "openai_enabled", fallback=True),
         "jplag_jar":          cfg.get("paths",       "jplag_jar",          fallback=_default_jplag()),
         "max_workers":        cfg.getint("performance", "max_workers",     fallback=4),
+        "campus_export_enabled": cfg.getboolean("features", "campus_export_enabled", fallback=False),
         "system_instruction": cfg.get("prompt",      "system_instruction", fallback=""),
         "eval_rules":         cfg.get("prompt",      "eval_rules",         fallback=""),
     })
@@ -754,6 +759,8 @@ def admin_save_config():
     cfg.set("paths", "jplag_jar", str(data.get("jplag_jar", "")))
     ensure("performance")
     cfg.set("performance", "max_workers", str(int(data.get("max_workers", 3))))
+    ensure("features")
+    cfg.set("features", "campus_export_enabled", "true" if bool(data.get("campus_export_enabled", False)) else "false")
     ensure("prompt")
     cfg.set("prompt", "system_instruction", str(data.get("system_instruction", "")).strip())
     cfg.set("prompt", "eval_rules",         str(data.get("eval_rules",         "")).strip())

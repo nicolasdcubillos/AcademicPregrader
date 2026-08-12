@@ -862,7 +862,7 @@
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M14 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zM5.5 11 3 7h1.5l1.5 2.5L7.5 7H9L6.5 11H5.5zm5 0-2.5-4H9.5L11 9.5 12.5 7H14l-2.5 4H10.5z"/></svg>
               Excel
             </button>
-            <button class="btn-dl-secondary" onclick="downloadCampus()" title="Exportar en formato de importación del Campus Virtual (D2L)">
+            <button class="btn-dl-secondary" id="btn-campus" onclick="downloadCampus()" title="Exportar en formato de importación del Campus Virtual (D2L)" style="display:none">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
               Campus Virtual
             </button>
@@ -1018,6 +1018,7 @@
         document.getElementById('cfg-llm').checked         = cfg.enable_llm         ?? true;
         document.getElementById('cfg-cache').checked       = cfg.enable_cache        ?? false;
         document.getElementById('cfg-comment-max').checked = cfg.comment_on_max      ?? false;
+        document.getElementById('btn-campus').style.display = cfg.campus_export_enabled ? '' : 'none';
         _providerAvailability = { openai: !!cfg.openai_available, gemini: !!cfg.gemini_available };
         updateProviderVisibility();
         const provider = cfg.llm_provider || 'openai';
