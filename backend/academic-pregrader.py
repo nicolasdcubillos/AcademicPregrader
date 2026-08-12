@@ -3,6 +3,7 @@ import sys
 import subprocess
 import csv
 import json
+import re
 import hashlib
 import zipfile
 import configparser
@@ -131,6 +132,32 @@ def run(cmd, input_text=None):
 # EXTRACCIÓN DE TEXTO
 # ==============================
 
+# Magics de línea (%…) y comandos de shell (!…), válidos en Colab/Jupyter
+# pero no en Python puro; también la forma de captura IPython "var = !cmd".
+_NB_MAGIC_OR_SHELL = re.compile(r"^\s*[%!]")
+_NB_SHELL_ASSIGN   = re.compile(r"^\s*\w+\s*=\s*!")
+
+
+def _sanitize_notebook_code(src: str) -> str:
+    """Comenta magics/comandos de shell para que el código sea Python válido."""
+    lines = src.splitlines()
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Magic de celda (%%bash, %%html…): la celda entera no es Python.
+        if stripped.startswith("%%"):
+            return "\n".join("# " + l for l in lines)
+        break
+    out = []
+    for line in lines:
+        if _NB_MAGIC_OR_SHELL.match(line) or _NB_SHELL_ASSIGN.match(line):
+            out.append("# " + line)
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def extract_notebook_source(path) -> str:
     """Extrae el código (y markdown como comentarios) de un Jupyter Notebook."""
     with open(path, encoding="utf-8", errors="replace") as fh:
@@ -150,7 +177,7 @@ def extract_notebook_source(path) -> str:
         if not src:
             continue
         if cell.get("cell_type") == "code":
-            parts.append(src)
+            parts.append(_sanitize_notebook_code(src))
         elif cell.get("cell_type") == "markdown":
             parts.append("\n".join("# " + line for line in src.splitlines()))
     return "\n\n".join(parts)
