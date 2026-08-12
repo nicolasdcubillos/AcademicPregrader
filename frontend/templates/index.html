@@ -124,6 +124,20 @@
     }
     .header-course svg { flex-shrink: 0; }
     @media (max-width: 720px) { .header-course { display: none; } }
+    .header-course-picker {
+      display: inline-flex; align-items: center; gap: 6px; margin-left: 12px;
+      padding: 3px 6px 3px 10px; border-radius: 20px;
+      background: rgba(90,103,214,.14); color: var(--accent-soft, #a5b4fc);
+      border: 1px solid var(--border-bright);
+    }
+    .header-course-picker svg { flex-shrink: 0; }
+    .header-course-picker select {
+      background: transparent; border: 0; outline: none; cursor: pointer;
+      color: var(--text); font-family: inherit; font-size: .72rem; font-weight: 600;
+      padding: 2px 4px; max-width: 220px;
+    }
+    .header-course-picker select option { color: var(--text); background: var(--surface); }
+    @media (max-width: 720px) { .header-course-picker { display: none; } }
     .header-spacer { flex: 1; }
     .header-badge {
       display: inline-flex; align-items: center; gap: 5px;
@@ -692,7 +706,17 @@
     <span class="header-title">Academic Pregrader</span>
     <div class="header-divider"></div>
     <span class="header-sub">Pre-calificador académico</span>
-    {% if active_course %}
+    {% if is_admin %}
+    <div class="header-course-picker" title="Curso que estás calificando">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <select id="course-picker" onchange="selectCourse(this.value)" aria-label="Curso a calificar">
+        <option value="">— Elige curso —</option>
+        {% for c in courses %}
+        <option value="{{ c.id }}" {% if c.id == active_course_id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% elif active_course %}
     <span class="header-course" title="Curso activo asignado por el administrador">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       {{ active_course }}
@@ -852,6 +876,15 @@
       const next = cur === 'light' ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', next);
       try { localStorage.setItem('theme', next); } catch (e) {}
+    }
+
+    async function selectCourse(id) {
+      try {
+        await fetch('/course/select', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ course_id: id })
+        });
+      } catch (e) { console.warn('No se pudo cambiar de curso:', e); }
     }
 
     const MODEL_PRESETS = {
