@@ -781,6 +781,16 @@ def admin_overview():
     })
 
 
+@app.route("/admin/api/events/clear", methods=["POST"])
+@auth.admin_required
+def admin_clear_events():
+    """Borra los eventos de calificaciones y descargas (reinicia esos contadores)."""
+    types = ["grade_run", "download_csv", "download_excel", "download_campus"]
+    deleted = auth.delete_events(types)
+    auth.log_event(session.get("user"), client_ip(), "admin_clear_events", detail=str(deleted))
+    return jsonify({"ok": True, "deleted": deleted})
+
+
 @app.route("/admin/api/users", methods=["POST"])
 @auth.admin_required
 def admin_create_user():
