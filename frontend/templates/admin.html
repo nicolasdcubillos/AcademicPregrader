@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin · Academic Pregrader</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      color-scheme: dark;
+      --bg: #0b0c12; --surface: #14151d; --surface-2: #191b24; --border: #262838;
+      --border-bright: #323548; --p1: #5a67d6; --p2: #7c74d8; --text: #e8eaf3;
+      --text-2: #a0a5ba; --text-3: #5c6178; --green: #10b981; --red: #f87171;
+      --yellow: #f59e0b; --input-bg: #191b24; --glass: rgba(11,12,18,.85);
+      --badge-admin: #b7bdf0; --badge-ok: #6ee7b7; --accent-soft: #a5b4fc;
+      --font: 'Inter', system-ui, sans-serif; --mono: 'JetBrains Mono', monospace;
+      --r: 14px; --r-sm: 9px;
+    }
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f5f6fa; --surface: #ffffff; --surface-2: #f5f6fb; --border: #e4e7f0;
+      --border-bright: #d3d8e6; --p1: #4b58c9; --p2: #6f66cf; --text: #1b2030;
+      --text-2: #545b71; --text-3: #878da2; --green: #059669; --red: #dc2626;
+      --yellow: #b45309; --input-bg: #f5f6fb; --glass: rgba(255,255,255,.85);
+      --badge-admin: #4b58c9; --badge-ok: #047857; --accent-soft: #4b58c9;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+    header {
+      display: flex; align-items: center; gap: 12px; padding: 16px 28px;
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--glass);
+      backdrop-filter: blur(12px); z-index: 10;
+    }
+    header .logo {
+      width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+      background: linear-gradient(135deg, #4b58c9, #6f66cf); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(75,88,201,.2);
+    }
+    header .logo svg { width: 16px; height: 16px; }
+    .btn-icon { padding: 8px; display: inline-flex; align-items: center; justify-content: center; }
+    #theme-toggle .ic-moon { display: none; }
+    #theme-toggle .ic-sun  { display: block; }
+    html[data-theme="light"] #theme-toggle .ic-sun  { display: none; }
+    html[data-theme="light"] #theme-toggle .ic-moon { display: block; }
+    header h1 { font-size: 16px; font-weight: 700; }
+    header .spacer { flex: 1; }
+    .btn {
+      border: 1px solid var(--border-bright); background: var(--surface-2); color: var(--text);
+      font-family: var(--font); font-size: 12px; font-weight: 600; padding: 8px 14px;
+      border-radius: var(--r-sm); cursor: pointer; text-decoration: none; transition: border-color .15s;
+    }
+    .btn:hover { border-color: var(--p1); }
+    .btn-primary { background: linear-gradient(135deg, var(--p1), var(--p2)); border: none; color: #fff; }
+    .btn-danger { border-color: rgba(248,113,113,.4); color: var(--red); }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+    main { max-width: 1280px; margin: 0 auto; padding: 28px; }
+    h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .admin-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
+    .admin-nav {
+      position: sticky; top: 91px; display: flex; flex-direction: column; gap: 5px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 8px;
+    }
+    .admin-nav button {
+      display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 9px 11px;
+      border: 0; border-radius: 7px; background: transparent; color: var(--text-2);
+      font-family: var(--font); font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
+    }
+    .admin-nav button:hover { background: var(--surface-2); color: var(--text); }
+    .admin-nav button.active { background: rgba(90,103,214,.14); color: var(--accent-soft); }
+    .admin-nav svg { width: 17px; height: 17px; flex: 0 0 auto; }
+    .admin-content { min-width: 0; }
+    .admin-section { display: none; }
+    .admin-section.active { display: block; animation: section-in .18s ease-out; }
+    .section-heading { margin-bottom: 18px; }
+    .section-heading p { color: var(--text-2); font-size: 13px; line-height: 1.5; margin-top: 5px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; }
+    .table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r); }
+    .table-wrap table { border: 0; border-radius: 0; min-width: 760px; }
+    @keyframes section-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 18px; }
+    .stat .n { font-size: 26px; font-weight: 800; }
+    .stat .l { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+    th, td { text-align: left; padding: 11px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    tr:last-child td { border-bottom: none; }
+    td .mono { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge.admin { background: rgba(99,102,241,.15); color: var(--badge-admin); }
+    .badge.blocked { background: rgba(248,113,113,.15); color: var(--red); }
+    .badge.ok { background: rgba(16,185,129,.15); color: var(--badge-ok); }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .evt { font-family: var(--mono); font-size: 12px; }
+    .evt-type { color: var(--p2); }
+    input, select {
+      background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--r-sm);
+      color: var(--text); font-family: var(--font); font-size: 13px; padding: 8px 10px; outline: none;
+    }
+    input:focus, select:focus { border-color: var(--p1); }
+    .create-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: var(--surface-2); border: 1px solid var(--p1); color: var(--text);
+      padding: 14px 18px; border-radius: var(--r); font-size: 13px; max-width: 480px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.5); display: none; z-index: 50;
+    }
+    .toast .mono { font-family: var(--mono); color: var(--accent-soft); word-break: break-all; }
+    .muted { color: var(--text-3); }
+    @media (max-width: 760px) {
+      header { padding: 13px 16px; }
+      header h1 { font-size: 14px; }
+      main { padding: 18px 16px; }
+      .admin-layout { display: block; }
+      .admin-nav {
+        position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 22px;
+      }
+      .admin-nav button { min-width: 0; white-space: nowrap; }
+      .panel { padding: 16px; }
+      .create-row input[type="text"], .create-row input:not([type]) { flex: 1 1 180px; }
+    }
+  </style>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t !== 'light' && t !== 'dark') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header>
+    <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+    <h1>Panel de administración</h1>
+    <div class="spacer"></div>
+    <button class="btn btn-icon" id="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema">
+      <svg class="ic-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      <svg class="ic-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <a class="btn" href="/">← App</a>
+    <a class="btn" href="/logout">Salir</a>
+  </header>
+
+  <main>
+    <div class="admin-layout">
+      <nav class="admin-nav" aria-label="Secciones de administración">
+        <button class="active" type="button" data-section="overview" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          Resumen
+        </button>
+        <button type="button" data-section="users">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Usuarios
+        </button>
+        <button type="button" data-section="config">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.5 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.08A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.12.6.65 1.03 1.27 1.03H21a2 2 0 1 1 0 4h-.09c-.62 0-1.15.43-1.51.97z"/></svg>
+          Configuración
+        </button>
+        <button type="button" data-section="activity">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 16 4-5 4 3 5-7"/></svg>
+          Actividad
+        </button>
+      </nav>
+
+      <div class="admin-content">
+        <section class="admin-section active" id="section-overview" aria-labelledby="heading-overview">
+          <div class="section-heading">
+            <h2 id="heading-overview">Resumen</h2>
+            <p>Estado general de usuarios, calificaciones y actividad de la plataforma.</p>
+          </div>
+          <div class="cards" id="stats"></div>
+        </section>
+
+        <section class="admin-section" id="section-config" aria-labelledby="heading-config" hidden>
+          <div class="section-heading">
+            <h2 id="heading-config">Configuración global</h2>
+            <p>Ajustes compartidos que se aplican a todas las calificaciones.</p>
+          </div>
+          <div class="panel">
+      <p class="muted" style="font-size:12px;margin-bottom:16px;">Estos ajustes aplican a todas las calificaciones. Las claves API no se muestran; deja el campo vacío para conservarlas.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+        <div>
+          <label style="display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;">Clave API de Gemini <span id="gm-status" class="muted"></span></label>
+          <input id="cfgGemini" type="password" placeholder="Pega una nueva clave para cambiarla…" autocomplete="off" style="width:100%;" />
+          <label style="font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:6px;margin-top:8px;">
+            <input type="checkbox" id="cfgGeminiEnabled" style="width:auto;" /> Habilitar Gemini para usuarios
+          </label>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;">Clave API de OpenAI <span id="oa-status" class="muted"></span></label>
+          <input id="cfgOpenai" type="password" placeholder="Pega una nueva clave para cambiarla…" autocomplete="off" style="width:100%;" />
+          <label style="font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:6px;margin-top:8px;">
+            <input type="checkbox" id="cfgOpenaiEnabled" style="width:auto;" /> Habilitar OpenAI para usuarios
+          </label>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;">Ruta al JAR de JPlag</label>
+          <input id="cfgJplag" type="text" placeholder="/app/backend/jplag-…jar" style="width:100%;" />
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;">Workers en paralelo</label>
+          <input id="cfgWorkers" type="number" min="1" max="16" step="1" style="width:100%;" />
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <label style="display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;">Instrucción de sistema</label>
+        <textarea id="cfgSysInstr" rows="3" placeholder="(vacío = instrucción por defecto)" style="width:100%;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--font);font-size:13px;padding:8px 10px;outline:none;resize:vertical;"></textarea>
+      </div>
+      <div style="margin-top:12px;">
+        <label style="display:block;font-size:12px;color:var(--text-2);margin-bottom:6px;">Reglas y escala de evaluación</label>
+        <textarea id="cfgEvalRules" rows="10" placeholder="(vacío = reglas por defecto)" style="width:100%;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;outline:none;resize:vertical;"></textarea>
+      </div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
+        <button class="btn btn-primary" onclick="saveGlobalConfig()">Guardar configuración</button>
+        <span id="cfgSaved" class="muted" style="font-size:12px;display:none;color:#6ee7b7;">Guardado ✓</span>
+      </div>
+          </div>
+        </section>
+
+        <section class="admin-section" id="section-users" aria-labelledby="heading-users" hidden>
+          <div class="section-heading">
+            <h2 id="heading-users">Usuarios</h2>
+            <p>Crea cuentas, asigna permisos y gestiona el acceso a la plataforma.</p>
+          </div>
+          <div class="create-row">
+      <input id="newUser" placeholder="nuevo_usuario" autocomplete="off" />
+      <label style="font-size:13px;color:var(--text-2);display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="newAdmin" style="width:auto;" /> admin
+      </label>
+      <button class="btn btn-primary" onclick="createUser()">Crear usuario</button>
+      <span class="muted" style="font-size:12px;">Se genera una clave temporal; el usuario la cambia al ingresar.</span>
+          </div>
+          <div class="table-wrap">
+            <table id="usersTable">
+      <thead>
+        <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Accesos</th><th>Calificó</th><th>Descargas</th><th>Acciones</th></tr>
+      </thead>
+      <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="admin-section" id="section-activity" aria-labelledby="heading-activity" hidden>
+          <div class="section-heading">
+            <h2 id="heading-activity">Actividad reciente</h2>
+            <p>Registro de accesos, calificaciones, descargas y cambios administrativos.</p>
+          </div>
+          <div class="table-wrap">
+            <table id="eventsTable">
+      <thead>
+        <tr><th>Fecha (UTC)</th><th>Usuario</th><th>Evento</th><th>Detalle</th><th>IP</th></tr>
+      </thead>
+      <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer style="max-width:1200px;margin:0 auto;padding:24px 28px 32px;text-align:center;font-size:11px;color:var(--text-3);letter-spacing:.02em;">
+    Academic Pregrader · Herramienta de pre-calificación académica · © 2026 Nicolás D. — Todos los derechos reservados
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    function showAdminSection(sectionName, updateHash = true) {
+      const target = document.getElementById(`section-${sectionName}`);
+      if (!target) return;
+
+      document.querySelectorAll(".admin-section").forEach(section => {
+        const active = section === target;
+        section.classList.toggle("active", active);
+        section.hidden = !active;
+      });
+      document.querySelectorAll(".admin-nav button").forEach(button => {
+        const active = button.dataset.section === sectionName;
+        button.classList.toggle("active", active);
+        if (active) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+      });
+      if (updateHash) history.replaceState(null, "", `#${sectionName}`);
+    }
+
+    document.querySelectorAll(".admin-nav button").forEach(button => {
+      button.addEventListener("click", () => showAdminSection(button.dataset.section));
+    });
+
+    function toggleTheme() {
+      const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      const next = cur === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    }
+
+    const EVENT_LABELS = {
+      login: "Inició sesión", logout: "Cerró sesión", login_failed: "Login fallido",
+      login_blocked: "Login bloqueado", grade_run: "Calificó", download_csv: "Descargó CSV",
+      download_excel: "Descargó Excel", password_changed: "Cambió su clave",
+      admin_create_user: "Creó usuario", admin_block: "Bloqueó", admin_unblock: "Desbloqueó",
+      admin_reset_password: "Reinició clave", admin_set_role: "Cambió rol", admin_delete_user: "Eliminó usuario",
+    };
+
+    function toast(html, ms = 9000) {
+      const t = document.getElementById("toast");
+      t.innerHTML = html; t.style.display = "block";
+      clearTimeout(t._timer); t._timer = setTimeout(() => t.style.display = "none", ms);
+    }
+
+    async function api(url, opts) {
+      const r = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || "Error");
+      return data;
+    }
+
+    async function load() {
+      const data = await api("/admin/api/overview");
+      renderStats(data);
+      renderUsers(data.users);
+      renderEvents(data.events);
+    }
+
+    async function loadGlobalConfig() {
+      try {
+        const c = await api("/admin/api/config");
+        document.getElementById("gm-status").textContent = c.gemini_has_api_key ? "· configurada ✓" : "· no configurada";
+        document.getElementById("oa-status").textContent = c.openai_has_api_key ? "· configurada ✓" : "· no configurada";
+        document.getElementById("cfgGeminiEnabled").checked = c.gemini_enabled ?? true;
+        document.getElementById("cfgOpenaiEnabled").checked = c.openai_enabled ?? true;
+        document.getElementById("cfgJplag").value     = c.jplag_jar   || "";
+        document.getElementById("cfgWorkers").value   = c.max_workers ?? 4;
+        document.getElementById("cfgSysInstr").value  = c.system_instruction || "";
+        document.getElementById("cfgEvalRules").value = c.eval_rules || "";
+      } catch (e) { console.warn("Config load failed:", e); }
+    }
+
+    async function saveGlobalConfig() {
+      const payload = {
+        gemini_api_key:     document.getElementById("cfgGemini").value.trim(),
+        openai_api_key:     document.getElementById("cfgOpenai").value.trim(),
+        gemini_enabled:     document.getElementById("cfgGeminiEnabled").checked,
+        openai_enabled:     document.getElementById("cfgOpenaiEnabled").checked,
+        jplag_jar:          document.getElementById("cfgJplag").value.trim(),
+        max_workers:        parseInt(document.getElementById("cfgWorkers").value) || 4,
+        system_instruction: document.getElementById("cfgSysInstr").value.trim(),
+        eval_rules:         document.getElementById("cfgEvalRules").value.trim(),
+      };
+      try {
+        await api("/admin/api/config", { method: "POST", body: JSON.stringify(payload) });
+        document.getElementById("cfgGemini").value = "";
+        document.getElementById("cfgOpenai").value = "";
+        const s = document.getElementById("cfgSaved");
+        s.style.display = "inline"; setTimeout(() => s.style.display = "none", 3000);
+        loadGlobalConfig();
+      } catch (e) { toast("Error al guardar: " + esc(e.message)); }
+    }
+
+    function renderStats(data) {
+      const totalGrades = data.users.reduce((a, u) => a + u.grade_count, 0);
+      const totalDownloads = data.users.reduce((a, u) => a + u.download_count, 0);
+      const blocked = data.users.filter(u => u.is_blocked).length;
+      const el = document.getElementById("stats");
+      const cards = [
+        ["Usuarios", data.users.length],
+        ["Bloqueados", blocked],
+        ["Calificaciones", totalGrades],
+        ["Descargas", totalDownloads],
+        ["Eventos", data.events.length],
+      ];
+      el.innerHTML = cards.map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+    }
+
+    function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+    function renderUsers(users) {
+      const tb = document.querySelector("#usersTable tbody");
+      tb.innerHTML = users.map(u => {
+        const role = u.is_admin ? '<span class="badge admin">admin</span>' : '<span class="muted">usuario</span>';
+        const state = u.is_blocked ? '<span class="badge blocked">bloqueado</span>' : '<span class="badge ok">activo</span>';
+        const last = u.last_login ? `<span class="mono">${esc(u.last_login)}</span>` : '<span class="muted">nunca</span>';
+        const un = esc(u.username);
+        return `<tr>
+          <td><strong>${un}</strong>${u.must_change_password ? ' <span class="muted">(clave temporal)</span>' : ''}</td>
+          <td>${role}</td><td>${state}</td><td>${last}</td>
+          <td>${u.login_count}</td><td>${u.grade_count}</td><td>${u.download_count}</td>
+          <td><div class="actions">
+            <button class="btn btn-sm" onclick="resetPwd('${un}')">Reiniciar clave</button>
+            <button class="btn btn-sm" onclick="toggleBlock('${un}', ${u.is_blocked ? 'false' : 'true'})">${u.is_blocked ? 'Desbloquear' : 'Bloquear'}</button>
+            <button class="btn btn-sm" onclick="toggleAdmin('${un}', ${u.is_admin ? 'false' : 'true'})">${u.is_admin ? 'Quitar admin' : 'Hacer admin'}</button>
+            <button class="btn btn-sm btn-danger" onclick="delUser('${un}')">Eliminar</button>
+          </div></td>
+        </tr>`;
+      }).join("");
+    }
+
+    function renderEvents(events) {
+      const tb = document.querySelector("#eventsTable tbody");
+      tb.innerHTML = events.map(e => `<tr>
+        <td class="mono">${esc(e.ts)}</td>
+        <td>${esc(e.username || "—")}</td>
+        <td class="evt"><span class="evt-type">${esc(EVENT_LABELS[e.event_type] || e.event_type)}</span></td>
+        <td class="muted">${esc(e.detail || "")}</td>
+        <td class="mono">${esc(e.ip || "")}</td>
+      </tr>`).join("");
+    }
+
+    async function createUser() {
+      const username = document.getElementById("newUser").value.trim();
+      const is_admin = document.getElementById("newAdmin").checked;
+      if (!username) return;
+      try {
+        const r = await api("/admin/api/users", { method: "POST", body: JSON.stringify({ username, is_admin }) });
+        document.getElementById("newUser").value = "";
+        document.getElementById("newAdmin").checked = false;
+        toast(`Usuario <strong>${esc(r.username)}</strong> creado.<br>Clave temporal: <span class="mono">${esc(r.temp_password)}</span><br>Compártela; la cambiará al ingresar.`);
+        load();
+      } catch (e) { toast("Error: " + esc(e.message)); }
+    }
+
+    async function resetPwd(u) {
+      if (!confirm(`¿Reiniciar la clave de ${u}?`)) return;
+      try {
+        const r = await api(`/admin/api/users/${encodeURIComponent(u)}/reset-password`, { method: "POST" });
+        toast(`Nueva clave temporal de <strong>${esc(u)}</strong>: <span class="mono">${esc(r.temp_password)}</span>`);
+        load();
+      } catch (e) { toast("Error: " + esc(e.message)); }
+    }
+
+    async function toggleBlock(u, blocked) {
+      try { await api(`/admin/api/users/${encodeURIComponent(u)}/block`, { method: "POST", body: JSON.stringify({ blocked }) }); load(); }
+      catch (e) { toast("Error: " + esc(e.message)); }
+    }
+
+    async function toggleAdmin(u, is_admin) {
+      try { await api(`/admin/api/users/${encodeURIComponent(u)}/admin`, { method: "POST", body: JSON.stringify({ is_admin }) }); load(); }
+      catch (e) { toast("Error: " + esc(e.message)); }
+    }
+
+    async function delUser(u) {
+      if (!confirm(`¿Eliminar el usuario ${u}? Esta acción no se puede deshacer.`)) return;
+      try { await api(`/admin/api/users/${encodeURIComponent(u)}`, { method: "DELETE" }); load(); }
+      catch (e) { toast("Error: " + esc(e.message)); }
+    }
+
+    const initialSection = location.hash.slice(1) || "overview";
+    showAdminSection(initialSection, false);
+    load();
+    loadGlobalConfig();
+    setInterval(load, 15000);
+  </script>
+</body>
+</html>

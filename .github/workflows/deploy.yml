@@ -1,0 +1,54 @@
+name: Deploy to Azure Container Apps
+
+# Build the image and roll out a new revision on every push to main.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write      # required for Azure OIDC login (no stored secrets)
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build & push image in ACR
+        # az acr build runs the Docker build on ACR Tasks — no Docker needed on
+        # the runner, and it caches layers server-side (faster JDK download step).
+        run: |
+          az acr build \
+            --registry "${{ vars.ACR_NAME }}" \
+            --image "pregrader:${{ github.sha }}" \
+            --image "pregrader:latest" \
+            .
+
+      - name: Deploy new revision to Container App
+        run: |
+          az containerapp update \
+            --name "${{ vars.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ vars.ACR_NAME }}.azurecr.io/pregrader:${{ github.sha }}"
+
+      - name: Show app URL
+        run: |
+          FQDN=$(az containerapp show \
+            --name "${{ vars.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Deployed: https://$FQDN" >> "$GITHUB_STEP_SUMMARY"

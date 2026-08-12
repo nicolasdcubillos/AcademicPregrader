@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Secrets — runtime config holds API keys, never commit it
+backend/config.ini
+
+# Auth store & session key (live on the persistent volume, not in git)
+backend/users.db
+backend/.secret_key

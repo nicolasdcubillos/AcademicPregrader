@@ -14,7 +14,7 @@ AcademicPregrader is a command-line tool that automates three stages of the grad
 
 1. **Compilation**: verifies that the student's C++ code compiles without errors.
 2. **Plagiarism detection**: compares all submissions against each other using [JPlag](https://github.com/jplag/JPlag) and flags pairs with high similarity.
-3. **LLM evaluation**: sends the code, the assignment description, and the rubric to a local language model (via Ollama) and returns scores broken down into logic, structure, and style.
+3. **LLM evaluation**: sends the code, the assignment description, and the rubric to OpenAI or Gemini and returns scores broken down into logic, structure, and style.
 
 The final output is a `resultados.csv` file with one row per student.
 
@@ -93,8 +93,12 @@ enable_llm         = true   # Enable LLM-based evaluation
 jplag_jar = /path/to/jplag.jar  # JPlag v4+ JAR (only needed if enable_plagiarism=true)
 
 [llm]
-command = ollama   # LLM CLI command
-model   = llama3   # Model name to use
+provider = openai       # openai (default) or gemini
+model = gpt-4o
+openai_enabled = true   # Admin can expose or hide each provider
+gemini_enabled = true
+openai_api_key =        # Prefer OPENAI_API_KEY in deployed environments
+gemini_api_key =        # Prefer GEMINI_API_KEY in deployed environments
 
 [plagiarism]
 threshold = 0.7    # Similarity threshold to flag plagiarism (0.0–1.0)
@@ -149,7 +153,7 @@ python src/academic-pregrader.py grading_session/
 - Python 3.8+
 - `pdfplumber` (`pip install pdfplumber`)
 - `g++` available on the PATH
-- [Ollama](https://ollama.com/) installed and running locally
+- An OpenAI or Gemini API key
 - Java 11+ (only if `enable_plagiarism=true`)
 - [JPlag v4+](https://github.com/jplag/JPlag/releases) (only if `enable_plagiarism=true`)
 
