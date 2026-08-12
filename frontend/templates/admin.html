@@ -108,6 +108,19 @@
     }
     .toast .mono { font-family: var(--mono); color: var(--accent-soft); word-break: break-all; }
     .muted { color: var(--text-3); }
+    .loading-overlay {
+      position: fixed; inset: 0; z-index: 100; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+      transition: opacity .3s ease; 
+    }
+    .loading-overlay.hide { opacity: 0; pointer-events: none; }
+    .loading-overlay p { color: var(--text-2); font-size: 13px; }
+    .spinner {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 3px solid var(--border-bright); border-top-color: var(--p1);
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 760px) {
       header { padding: 13px 16px; }
       header h1 { font-size: 14px; }
@@ -286,6 +299,11 @@
             <h2 id="heading-activity">Actividad reciente</h2>
             <p>Registro de accesos, calificaciones, descargas y cambios administrativos.</p>
           </div>
+          <div class="create-row" style="margin-bottom:14px;">
+            <label style="font-size:13px;color:var(--text-2);">Filtrar por usuario</label>
+            <select id="eventUserFilter" onchange="renderEvents()"><option value="">Todos</option></select>
+            <span id="eventCount" class="muted" style="font-size:12px;"></span>
+          </div>
           <div class="table-wrap">
             <table id="eventsTable">
       <thead>
@@ -304,6 +322,11 @@
   </footer>
 
   <div class="toast" id="toast"></div>
+
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+    <p>Cargando panel…</p>
+  </div>
 
   <script>
     function showAdminSection(sectionName, updateHash = true) {
@@ -359,14 +382,27 @@
     }
 
     let _courses = [];
+    let _events = [];
+    let _firstLoad = true;
 
     async function load() {
-      const data = await api("/admin/api/overview");
-      _courses = data.courses || [];
-      renderStats(data);
-      renderCourses(_courses);
-      renderUsers(data.users);
-      renderEvents(data.events);
+      try {
+        const data = await api("/admin/api/overview");
+        _courses = data.courses || [];
+        _events = data.events || [];
+        renderStats(data);
+        renderCourses(_courses);
+        renderUsers(data.users);
+        populateEventFilter(data.users);
+        renderEvents();
+      } catch (e) {
+        if (_firstLoad) toast("Error al cargar el panel: " + esc(e.message));
+      } finally {
+        if (_firstLoad) {
+          document.getElementById("loadingOverlay").classList.add("hide");
+          _firstLoad = false;
+        }
+      }
     }
 
     async function loadGlobalConfig() {
@@ -516,9 +552,27 @@
       } catch (e) { toast("Error: " + esc(e.message)); load(); }
     }
 
+    function populateEventFilter(users) {
+      const sel = document.getElementById("eventUserFilter");
+      const cur = sel.value;
+      const names = users.map(u => u.username).sort();
+      sel.innerHTML = '<option value="">Todos</option>' +
+        names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+      if (names.includes(cur)) sel.value = cur;
+    }
+
     function renderEvents(events) {
+      if (events) _events = events;
+      const filter = document.getElementById("eventUserFilter").value;
+      const rows = filter ? _events.filter(e => (e.username || "") === filter) : _events;
       const tb = document.querySelector("#eventsTable tbody");
-      tb.innerHTML = events.map(e => `<tr>
+      const count = document.getElementById("eventCount");
+      if (count) count.textContent = `${rows.length} evento(s)`;
+      if (!rows.length) {
+        tb.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:22px;">Sin eventos para este filtro.</td></tr>';
+        return;
+      }
+      tb.innerHTML = rows.map(e => `<tr>
         <td class="mono">${esc(e.ts)}</td>
         <td>${esc(e.username || "—")}</td>
         <td class="evt"><span class="evt-type">${esc(EVENT_LABELS[e.event_type] || e.event_type)}</span></td>

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import unicodedata
 import webbrowser
 from pathlib import Path
 
@@ -427,6 +428,90 @@ def download_excel(job_id: str):
     )
 
 
+def _name_tokens(name: str) -> set:
+    """Tokens normalizados de un nombre (sin acentos, mayúsculas, sin iniciales)."""
+    s = unicodedata.normalize("NFKD", str(name))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Za-z0-9 ]", " ", s).upper()
+    return {t for t in s.split() if len(t) > 1}
+
+
+def _match_roster(student_name: str, roster_tokens: list) -> dict | None:
+    """Empareja el nombre calificado con una fila del roster por tokens de nombre."""
+    g = _name_tokens(student_name)
+    if not g:
+        return None
+    best, best_score = None, 0.0
+    for entry, tokens in roster_tokens:
+        if not tokens:
+            continue
+        inter = g & tokens
+        if not inter:
+            continue
+        subset = g <= tokens or tokens <= g
+        score = 1.0 if subset else len(inter) / len(g | tokens)
+        if score > best_score:
+            best_score, best = score, entry
+    return best if best_score >= 0.5 else None
+
+
+@app.route("/download/<job_id>/campus")
+@auth.login_required
+def download_campus(job_id: str):
+    """Exporta las notas en el formato de importación del Campus Virtual (D2L)."""
+    results = _results.get(job_id)
+    if not results:
+        return "No hay resultados para este job.", 404
+
+    course = auth.get_user_active_course(session["user"])
+    if not course:
+        return jsonify({"error": "No tienes un curso activo. Selecciona o pide que te asignen uno."}), 400
+
+    roster = auth.get_course_students(course["id"])
+    if not roster:
+        return jsonify({"error": "El curso activo no tiene estudiantes cargados."}), 400
+
+    item = (request.args.get("item", "") or "").strip() or "Nota"
+    roster_tokens = [(s, _name_tokens(s.get("full_name", ""))) for s in roster]
+
+    matched_rows, unmatched = [], []
+    for r in results:
+        name = str(r.get("estudiante", ""))
+        nota = r.get("nota", "")
+        try:
+            nota_val = round(float(nota), 1)
+        except (ValueError, TypeError):
+            nota_val = None
+        entry = _match_roster(name, roster_tokens)
+        org_id = (entry or {}).get("org_id", "").strip() if entry else ""
+        if entry and org_id and nota_val is not None:
+            matched_rows.append((org_id, nota_val))
+        else:
+            unmatched.append(name)
+
+    import io
+    output = io.StringIO()
+    writer = csv_module.writer(output)
+    writer.writerow(["OrgDefinedId", f"{item} Points Grade", "End-of-Line Indicator"])
+    for org_id, nota_val in matched_rows:
+        writer.writerow([org_id, f"{nota_val:.1f}", "#"])
+
+    auth.log_event(session.get("user"), client_ip(), "download_campus",
+                   detail=f"{course['name']} · {item} · {len(matched_rows)} ok / {len(unmatched)} sin emparejar")
+
+    from urllib.parse import quote as _urlquote
+    safe_item = re.sub(r"[^A-Za-z0-9_-]+", "_", item).strip("_") or "notas"
+    resp = Response(
+        "\ufeff" + output.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=campus_{safe_item}.csv"},
+    )
+    resp.headers["X-Matched-Count"] = str(len(matched_rows))
+    resp.headers["X-Unmatched-Count"] = str(len(unmatched))
+    resp.headers["X-Unmatched"] = _urlquote(" · ".join(unmatched[:40]))
+    return resp
+
+
 @app.route("/results/<job_id>", methods=["POST"])
 @auth.login_required
 def update_results(job_id: str):
@@ -466,6 +551,7 @@ USER_CONFIG_DEFAULTS = {
     "enable_plagiarism":   False,
     "enable_llm":          True,
     "enable_cache":        False,
+    "comment_on_max":      False,
     "llm_provider":        "openai",
     "llm_model":           "gpt-4o",
     "threshold":           0.7,
@@ -565,6 +651,7 @@ def save_config():
         "enable_plagiarism":   bool(data.get("enable_plagiarism", False)),
         "enable_llm":          bool(data.get("enable_llm", True)) and bool(_available_providers(cfg)),
         "enable_cache":        bool(data.get("enable_cache", False)),
+        "comment_on_max":      bool(data.get("comment_on_max", False)),
         "llm_provider":        provider,
         "llm_model":           fallback_model or str(data.get("llm_model", _provider_defaults(provider)[1])),
         "threshold":           float(data.get("threshold", 0.7) or 0.7),
@@ -609,6 +696,7 @@ def build_job_config_dir(username: str) -> str:
 
     cfg.add_section("submission")
     cfg.set("submission", "language", uc["submission_language"])         # usuario
+    cfg.set("submission", "comment_on_max", "true" if uc["comment_on_max"] else "false")  # usuario
 
     job_dir = tempfile.mkdtemp(prefix="pgcfg_")
     with open(os.path.join(job_dir, "config.ini"), "w", encoding="utf-8") as f:

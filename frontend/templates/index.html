@@ -629,6 +629,13 @@
             </div>
             <div class="toggle-switch"><input type="checkbox" id="cfg-cache" /><span class="toggle-track"></span></div>
           </label>
+          <label class="toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-name">Comentario en nota 5.0</span>
+              <span class="toggle-desc">Incluir comentario aunque la nota sea perfecta</span>
+            </div>
+            <div class="toggle-switch"><input type="checkbox" id="cfg-comment-max" /><span class="toggle-track"></span></div>
+          </label>
         </div>
 
         <div class="settings-section">
@@ -694,6 +701,34 @@
           </button>
         </div>
         <pre class="code-view" id="code-modal-body"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Campus Virtual export modal ── -->
+  <div class="modal-overlay hidden" id="campus-overlay" onclick="closeCampusOutside(event)">
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:440px">
+      <div class="modal-header">
+        <span class="modal-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Exportar al Campus Virtual
+        </span>
+        <button class="modal-close" onclick="closeCampus()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <label class="field-label">Nombre del ítem de calificación en el Campus</label>
+          <input class="select-input" id="campus-item" type="text" placeholder="Ej. Taller 05" autocomplete="off" />
+          <p class="field-hint" style="margin-top:6px">Debe coincidir exactamente con el nombre del ítem en el libro de calificaciones (D2L). Se genera una columna «&lt;ítem&gt; Points Grade».</p>
+          <p class="field-hint" id="campus-course-hint" style="margin-top:8px"></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-run" id="btn-campus-dl" onclick="confirmCampusDownload()" style="margin-top:0;padding:13px">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-5-5h3V2h4v5h3l-5 5zM2 14h12v-1H2v1z"/></svg>
+          Descargar CSV de importación
+        </button>
+        <p class="save-feedback hidden" id="campus-feedback"></p>
       </div>
     </div>
   </div>
@@ -826,6 +861,10 @@
             <button class="btn-dl-secondary" onclick="downloadExcel()">
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M14 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zM5.5 11 3 7h1.5l1.5 2.5L7.5 7H9L6.5 11H5.5zm5 0-2.5-4H9.5L11 9.5 12.5 7H14l-2.5 4H10.5z"/></svg>
               Excel
+            </button>
+            <button class="btn-dl-secondary" onclick="downloadCampus()" title="Exportar en formato de importación del Campus Virtual (D2L)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              Campus Virtual
             </button>
             <button class="btn-dl-primary" onclick="downloadCSV()">
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-5-5h3V2h4v5h3l-5 5zM2 14h12v-1H2v1z"/></svg>
@@ -978,6 +1017,7 @@
         document.getElementById('cfg-plagiarism').checked  = cfg.enable_plagiarism  ?? false;
         document.getElementById('cfg-llm').checked         = cfg.enable_llm         ?? true;
         document.getElementById('cfg-cache').checked       = cfg.enable_cache        ?? false;
+        document.getElementById('cfg-comment-max').checked = cfg.comment_on_max      ?? false;
         _providerAvailability = { openai: !!cfg.openai_available, gemini: !!cfg.gemini_available };
         updateProviderVisibility();
         const provider = cfg.llm_provider || 'openai';
@@ -1000,6 +1040,7 @@
         enable_plagiarism:   document.getElementById('cfg-plagiarism').checked,
         enable_llm:          document.getElementById('cfg-llm').checked,
         enable_cache:        document.getElementById('cfg-cache').checked,
+        comment_on_max:      document.getElementById('cfg-comment-max').checked,
         llm_provider:        getSelectedProvider(),
         llm_model:           getSelectedModel(),
         threshold:           parseFloat(document.getElementById('cfg-threshold').value) || 0.7,
@@ -1017,7 +1058,7 @@
     function openSettings()  { document.getElementById('settings-overlay').classList.remove('hidden'); }
     function closeSettings() { document.getElementById('settings-overlay').classList.add('hidden'); }
     function closeSettingsOutside(e) { if (e.target === document.getElementById('settings-overlay')) closeSettings(); }
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettings(); closeCodePreview(); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettings(); closeCodePreview(); closeCampus(); } });
 
     // ── File upload ──
     const _files = { zip: null, pdf: null };
@@ -1464,6 +1505,63 @@
       clearTimeout(_syncTimer);
       await syncResults();
       window.location.href = url;
+    }
+
+    function downloadCampus() {
+      if (!currentJobId) return;
+      const hint = document.getElementById('campus-course-hint');
+      const picker = document.getElementById('course-picker');
+      if (picker) {
+        const name = picker.options[picker.selectedIndex]?.text || '';
+        hint.textContent = picker.value ? `Curso activo: ${name}` : 'Elige primero un curso en la barra superior.';
+      } else {
+        hint.textContent = '';
+      }
+      document.getElementById('campus-feedback').classList.add('hidden');
+      document.getElementById('campus-overlay').classList.remove('hidden');
+      setTimeout(() => document.getElementById('campus-item').focus(), 50);
+    }
+
+    function closeCampus() { document.getElementById('campus-overlay').classList.add('hidden'); }
+    function closeCampusOutside(e) { if (e.target === e.currentTarget) closeCampus(); }
+
+    async function confirmCampusDownload() {
+      const item = document.getElementById('campus-item').value.trim();
+      const fb = document.getElementById('campus-feedback');
+      if (!item) { fb.textContent = 'Escribe el nombre del ítem.'; fb.classList.remove('hidden'); return; }
+      const btn = document.getElementById('btn-campus-dl');
+      btn.disabled = true;
+      fb.classList.remove('hidden'); fb.textContent = 'Generando…';
+      try {
+        clearTimeout(_syncTimer);
+        await syncResults();
+        const res = await fetch(`/download/${currentJobId}/campus?item=${encodeURIComponent(item)}`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          fb.textContent = err.error || 'No se pudo generar el archivo.';
+          return;
+        }
+        const matched = res.headers.get('X-Matched-Count') || '0';
+        const unmatchedN = parseInt(res.headers.get('X-Unmatched-Count') || '0', 10);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `campus_${item.replace(/[^A-Za-z0-9_-]+/g, '_') || 'notas'}.csv`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        if (unmatchedN > 0) {
+          const names = decodeURIComponent(res.headers.get('X-Unmatched') || '');
+          fb.textContent = `${matched} nota(s) exportada(s). ${unmatchedN} sin emparejar: ${names}`;
+        } else {
+          fb.textContent = `${matched} nota(s) exportada(s). Listo para importar.`;
+          setTimeout(closeCampus, 1600);
+        }
+      } catch (e) {
+        fb.textContent = 'Error: ' + e.message;
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     // ── Code preview ──
