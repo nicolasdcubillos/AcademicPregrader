@@ -716,6 +716,12 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
 
         log(f"  -> Lenguaje: {LANG_LABELS.get(lang, lang)} ({len(files)} archivo(s))")
 
+        # Código fuente de la entrega (para preview y evaluación)
+        try:
+            codigo_fuente = extract_submission_text(files, lang)
+        except Exception:
+            codigo_fuente = ""
+
         # Datos de plagio
         plagio_info   = plagio_map.get(carpeta.name, {})
         con_quien_raw = plagio_info.get("con_quien", "")
@@ -733,7 +739,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                 log("  -> Error de compilación")
                 log("--------------------------------------")
                 plagio_str = f"Con: {con_quien} ({porcentaje}%)" if plagio_info else ""
-                return [estudiante, error_msg, plagio_str, 0.0, "Error de compilación"], logs
+                return [estudiante, error_msg, plagio_str, 0.0, "Error de compilación", codigo_fuente], logs
             log("  -> Compilación exitosa")
             compila_str = "SI"
         elif lang == "pdf":
@@ -747,7 +753,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
         resp       = None
 
         if enable_llm:
-            code = extract_submission_text(files, lang)
+            code = codigo_fuente
             cache_key = compute_evaluation_key(code, enunciado_texto)
 
             with _cache_lock:
@@ -768,7 +774,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                 log("  -> Falló evaluación LLM")
                 log("--------------------------------------")
                 plagio_str = f"Con: {con_quien} ({porcentaje}%)" if plagio_info else ""
-                return [estudiante, compila_str, plagio_str, 0.0, "ERROR evaluando LLM"], logs
+                return [estudiante, compila_str, plagio_str, 0.0, "ERROR evaluando LLM", codigo_fuente], logs
 
             try:
                 logica = round(clamp(float(resp.get("logica", resp.get("nota_final", 0)))), 1)
@@ -782,7 +788,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
 
         plagio_str = f"Con: {con_quien} ({porcentaje}%)" if plagio_info else ""
         log("--------------------------------------")
-        return [estudiante, compila_str, plagio_str, logica, comentario], logs
+        return [estudiante, compila_str, plagio_str, logica, comentario, codigo_fuente], logs
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(_process_student, c) for c in estudiantes]
@@ -804,6 +810,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                     "plagio":     row[2],
                     "nota":       row[3],
                     "comentario": row[4],
+                    "codigo":     row[5] if len(row) > 5 else "",
                 }
                 print(f"##RESULT## {json.dumps(row_dict, ensure_ascii=False)}", flush=True)
 

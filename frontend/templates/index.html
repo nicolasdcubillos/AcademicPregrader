@@ -422,6 +422,30 @@
     .modal-body   { padding: 20px 22px; display: flex; flex-direction: column; gap: 22px; }
     .modal-footer { padding: 16px 22px 20px; border-top: 1px solid var(--border); }
 
+    /* ── Code preview modal ── */
+    .modal.modal-code { max-width: 860px; }
+    .code-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .code-meta { font-size: .7rem; color: var(--text-3); font-family: var(--mono); }
+    .code-copy { margin-left: auto; background: var(--surface-2); border: 1px solid var(--border-bright); border-radius: var(--r-xs); padding: 5px 12px; color: var(--text-2); font-family: var(--font); font-size: .72rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all .18s; }
+    .code-copy:hover { border-color: var(--p1); color: var(--p3); background: rgba(90,103,214,.08); }
+    .code-copy.copied { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+    .code-view {
+      background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--r-sm);
+      padding: 16px 18px; max-height: 62vh; overflow: auto; margin: 0;
+      font-family: var(--mono); font-size: .76rem; line-height: 1.7; color: #c8cbe8;
+      white-space: pre; tab-size: 4;
+    }
+    .code-view .code-file { color: #9aa6ee; font-weight: 600; }
+    .code-empty { color: var(--text-3); font-size: .78rem; padding: 24px 0; text-align: center; }
+    .stu-preview-btn {
+      align-self: flex-start; background: var(--surface); border: 1px solid var(--border-bright);
+      border-radius: var(--r-xs); padding: 6px 12px; color: var(--text-2);
+      font-family: var(--font); font-size: .72rem; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; transition: all .18s;
+    }
+    .stu-preview-btn:hover { border-color: var(--p1); color: var(--p3); background: rgba(90,103,214,.08); }
+    .stu-preview-btn svg { width: 13px; height: 13px; }
+
     /* ── Settings ── */
     .settings-section { display: flex; flex-direction: column; gap: 9px; }
     .settings-section-title { font-size: .63rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--text-3); margin-bottom: 1px; display: flex; align-items: center; gap: 7px; }
@@ -599,6 +623,29 @@
     </div>
   </div>
 
+  <!-- ── Code Preview Modal ── -->
+  <div class="modal-overlay hidden" id="code-overlay" onclick="closeCodePreviewOutside(event)">
+    <div class="modal modal-code" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          <span id="code-modal-name">Código</span>
+        </span>
+        <button class="modal-close" onclick="closeCodePreview()">✕</button>
+      </div>
+      <div class="modal-body" style="gap:12px">
+        <div class="code-toolbar">
+          <span class="code-meta" id="code-modal-meta"></span>
+          <button class="code-copy" id="code-copy-btn" onclick="copyPreviewCode()">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5H6z"/><path d="M2 5a2 2 0 0 1 2-2v1.5A.5.5 0 0 0 3.5 5v9a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5H12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/></svg>
+            Copiar
+          </button>
+        </div>
+        <pre class="code-view" id="code-modal-body"></pre>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Header ── -->
   <header>
     <div class="logo">
@@ -751,6 +798,7 @@
     let currentSort       = 'desc';
     let activeFilters     = new Set();
     let logVisible        = true;
+    let _previewCodes     = [];
 
     function toggleTheme() {
       const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
@@ -889,7 +937,7 @@
     function openSettings()  { document.getElementById('settings-overlay').classList.remove('hidden'); }
     function closeSettings() { document.getElementById('settings-overlay').classList.add('hidden'); }
     function closeSettingsOutside(e) { if (e.target === document.getElementById('settings-overlay')) closeSettings(); }
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSettings(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettings(); closeCodePreview(); } });
 
     // ── File upload ──
     const _files = { zip: null, pdf: null };
@@ -1106,8 +1154,8 @@
     }
 
     function renderCardsFromResults(results) {
-      const headers = ['Estudiante','Compila','Plagio','Nota','Comentario'];
-      const rows = results.map(r => [r.estudiante??'', r.compila??'', r.plagio??'', r.nota!==undefined?r.nota:'', r.comentario??'']);
+      const headers = ['Estudiante','Compila','Plagio','Nota','Comentario','Codigo'];
+      const rows = results.map(r => [r.estudiante??'', r.compila??'', r.plagio??'', r.nota!==undefined?r.nota:'', r.comentario??'', r.codigo??'']);
       renderCards(headers, rows);
     }
 
@@ -1130,7 +1178,7 @@
 
     function renderCards(headers, rows) {
       const idxOf = h => headers.findIndex(x => x.toLowerCase() === h);
-      const ix = { estudiante:idxOf('estudiante'), compila:idxOf('compila'), plagio:idxOf('plagio'), nota:idxOf('nota'), comentario:idxOf('comentario') };
+      const ix = { estudiante:idxOf('estudiante'), compila:idxOf('compila'), plagio:idxOf('plagio'), nota:idxOf('nota'), comentario:idxOf('comentario'), codigo:idxOf('codigo') };
       const count = rows.length;
 
       document.getElementById('results-count').textContent = `${count} estudiante${count!==1?'s':''}`;
@@ -1156,6 +1204,7 @@
 
       const grid = document.getElementById('students-grid');
       grid.innerHTML = '';
+      _previewCodes = [];
 
       rows.forEach((row, ri) => {
         const nameRaw    = ix.estudiante !== -1 ? (row[ix.estudiante]||'—') : '—';
@@ -1163,6 +1212,7 @@
         const plagioRaw  = ix.plagio     !== -1 ? (row[ix.plagio]    ||'')  : '';
         const notaN      = ix.nota       !== -1 ? parseFloat(row[ix.nota])  : NaN;
         const comentario = ix.comentario !== -1 ? (row[ix.comentario]||'')  : '';
+        const codigoRaw  = ix.codigo     !== -1 ? (row[ix.codigo]    ||'')  : '';
         const barW       = (!isNaN(notaN)&&notaN>=0) ? Math.min(100,(notaN/5)*100).toFixed(1) : 0;
         const notaCls    = gradeColorClass(notaN);
         const notaDisp   = isNaN(notaN) ? '—' : notaN.toFixed(1);
@@ -1180,6 +1230,14 @@
         const errHtml = (compilaRaw && compilaRaw !== 'SI' && compilaRaw !== 'N/A')
           ? `<div class="stu-error">${esc(compilaRaw.slice(0,600))}${compilaRaw.length>600?'\n…':''}</div>` : '';
 
+        const codeIdx = _previewCodes.length;
+        _previewCodes.push({ name: nameRaw, code: codigoRaw });
+        const previewHtml = codigoRaw
+          ? `<button class="stu-preview-btn" onclick="openCodePreview(${codeIdx})">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+               Ver código
+             </button>` : '';
+
         const card = document.createElement('div');
         card.className = 'stu-card fade-in';
         card.style.animationDelay = Math.min(ri*35,500) + 'ms';
@@ -1193,7 +1251,7 @@
             <div class="stu-grade-big ${notaCls}">${esc(notaDisp)}</div>
           </div>
           ${badges ? `<div class="stu-badges">${badges}</div>` : ''}
-          ${commentHtml}${errHtml}`;
+          ${commentHtml}${errHtml}${previewHtml}`;
         grid.appendChild(card);
       });
     }
@@ -1226,6 +1284,49 @@
 
     function downloadCSV()   { if (currentJobId) window.location.href = `/download/${currentJobId}`; }
     function downloadExcel() { if (currentJobId) window.location.href = `/download/${currentJobId}/excel`; }
+
+    // ── Code preview ──
+    function highlightCodeFiles(code) {
+      return esc(code).replace(/^(\/\/ --- .* ---)$/gm, '<span class="code-file">$1</span>');
+    }
+
+    function openCodePreview(idx) {
+      const item = _previewCodes[idx];
+      if (!item) return;
+      document.getElementById('code-modal-name').textContent = item.name || 'Código';
+      const lines = item.code ? item.code.split('\n').length : 0;
+      const chars = item.code ? item.code.length : 0;
+      document.getElementById('code-modal-meta').textContent =
+        item.code ? `${lines} línea${lines !== 1 ? 's' : ''} · ${chars} caracteres` : '';
+      const body = document.getElementById('code-modal-body');
+      body.innerHTML = item.code
+        ? highlightCodeFiles(item.code)
+        : '<span class="code-empty">No hay código disponible para esta entrega.</span>';
+      body.scrollTop = 0;
+      resetCopyBtn();
+      document.getElementById('code-overlay').classList.remove('hidden');
+    }
+
+    function closeCodePreview() { document.getElementById('code-overlay').classList.add('hidden'); }
+    function closeCodePreviewOutside(e) { if (e.target === document.getElementById('code-overlay')) closeCodePreview(); }
+
+    function resetCopyBtn() {
+      const btn = document.getElementById('code-copy-btn');
+      btn.classList.remove('copied');
+      btn.lastChild.textContent = ' Copiar';
+    }
+
+    async function copyPreviewCode() {
+      const text = document.getElementById('code-modal-body').textContent || '';
+      if (!text) return;
+      const btn = document.getElementById('code-copy-btn');
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.classList.add('copied');
+        btn.lastChild.textContent = ' Copiado';
+        setTimeout(resetCopyBtn, 2000);
+      } catch (e) { console.warn('Copy failed:', e); }
+    }
   </script>
 </body>
 </html>
