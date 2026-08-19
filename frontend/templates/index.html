@@ -167,8 +167,8 @@
 
     /* ── Main ── */
     main {
-      position: relative; z-index: 2; width: 100%; max-width: 920px;
-      padding: 0 20px 100px; display: flex; flex-direction: column; gap: 18px;
+      position: relative; z-index: 2; width: 100%; max-width: 1300px;
+      padding: 0 28px 100px; display: flex; flex-direction: column; gap: 18px;
     }
 
     /* ── Hero ── */
@@ -389,8 +389,8 @@
     .btn-dl-primary:active, .btn-dl-secondary:active { transform: translateY(0); }
 
     /* ── Student grid ── */
-    .students-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px,1fr)); gap: 14px; }
-    @media (max-width: 560px) { .students-grid { grid-template-columns: 1fr; } }
+    .students-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    @media (max-width: 760px) { .students-grid { grid-template-columns: 1fr; } }
     .stu-card {
       background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);
       padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
