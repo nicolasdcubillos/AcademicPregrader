@@ -457,7 +457,8 @@
       font-family: var(--mono); font-size: .76rem; line-height: 1.7; color: #c8cbe8;
       white-space: pre; tab-size: 4;
     }
-    .code-view .code-file { color: #9aa6ee; font-weight: 600; }
+    .code-view .code-file { color: #9aa6ee; font-weight: 600; display: block; }
+    .code-view.hljs { background: var(--code-bg) !important; }
     .code-empty { color: var(--text-3); font-size: .78rem; padding: 24px 0; text-align: center; }
     .stu-preview-btn {
       align-self: flex-start; background: var(--surface); border: 1px solid var(--border-bright);
@@ -557,6 +558,8 @@
     }
     .site-footer .dot { opacity: .5; }
   </style>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script>
     (function () {
       try {
@@ -1566,8 +1569,35 @@
     }
 
     // ── Code preview ──
+    function detectLang(filename) {
+      const ext = (filename.split('.').pop() || '').toLowerCase();
+      const map = {
+        py: 'python', js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript',
+        java: 'java', c: 'c', cpp: 'cpp', cc: 'cpp', h: 'c', hpp: 'cpp',
+        cs: 'csharp', rb: 'ruby', go: 'go', rs: 'rust', php: 'php',
+        swift: 'swift', kt: 'kotlin', scala: 'scala', r: 'r', m: 'matlab',
+        html: 'xml', css: 'css', xml: 'xml', json: 'json', yaml: 'yaml', yml: 'yaml',
+        sh: 'bash', sql: 'sql', pl: 'perl',
+      };
+      return map[ext] || 'plaintext';
+    }
+
     function highlightCodeFiles(code) {
-      return esc(code).replace(/^(\/\/ --- .* ---)$/gm, '<span class="code-file">$1</span>');
+      const parts = code.split(/^(\/\/ --- .* ---)$/gm);
+      let html = '';
+      let lang = 'plaintext';
+      for (const part of parts) {
+        const m = part.match(/^\/\/ --- (.*) ---$/);
+        if (m) {
+          lang = detectLang(m[1].trim());
+          html += `<span class="code-file">${esc(part)}</span>`;
+        } else if (part) {
+          html += window.hljs
+            ? hljs.highlight(part, { language: lang, ignoreIllegals: true }).value
+            : esc(part);
+        }
+      }
+      return html;
     }
 
     function openCodePreview(idx) {
@@ -1579,6 +1609,7 @@
       document.getElementById('code-modal-meta').textContent =
         item.code ? `${lines} línea${lines !== 1 ? 's' : ''} · ${chars} caracteres` : '';
       const body = document.getElementById('code-modal-body');
+      body.classList.toggle('hljs', !!window.hljs);
       body.innerHTML = item.code
         ? highlightCodeFiles(item.code)
         : '<span class="code-empty">No hay código disponible para esta entrega.</span>';
