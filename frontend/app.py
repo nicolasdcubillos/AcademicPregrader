@@ -168,6 +168,8 @@ def run_pregrader():
     zip_file.save(zip_path)
     pdf_file.save(pdf_path)
 
+    extra_notes = (request.form.get("extra_notes") or "").strip()[:4000]
+
     auth.log_event(session.get("user"), client_ip(), "grade_run", detail=zip_name)
 
     # Config efectiva del job: global (admin) + personal del usuario.
@@ -182,6 +184,8 @@ def run_pregrader():
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["PREGRADER_CONFIG_DIR"] = job_cfg_dir
+        if extra_notes:
+            env["PREGRADER_EXTRA_NOTES"] = extra_notes
 
         job_results = []
 
@@ -662,6 +666,63 @@ def save_config():
     }
     auth.save_user_config(session["user"], saved)
     return jsonify({"ok": True})
+
+
+def _call_llm_question(provider: str, model: str, api_key: str, prompt: str) -> str | None:
+    if provider == "gemini":
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            m = genai.GenerativeModel(model_name=model, generation_config={"temperature": 0.3, "max_output_tokens": 1024})
+            return m.generate_content(prompt).text
+        except Exception:
+            return None
+    elif provider == "openai":
+        try:
+            from openai import OpenAI
+            r = OpenAI(api_key=api_key).chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3, max_tokens=1024,
+            )
+            return r.choices[0].message.content
+        except Exception:
+            return None
+    return None
+
+
+@app.route("/ask_ai", methods=["POST"])
+@auth.login_required
+def ask_ai():
+    data = request.get_json(force=True) or {}
+    code     = str(data.get("code",     "")).strip()[:80000]
+    question = str(data.get("question", "")).strip()[:2000]
+    if not question:
+        return jsonify({"error": "Pregunta vacía."}), 400
+
+    cfg = _read_global_cfg()
+    uc  = _effective_user_config(session["user"])
+    provider, fallback_model = _effective_provider(cfg, str(uc["llm_provider"]))
+    model = fallback_model or str(uc["llm_model"])
+
+    if provider == "gemini":
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip() or cfg.get("llm", "gemini_api_key", fallback="")
+    else:
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip() or cfg.get("llm", "openai_api_key", fallback="")
+
+    if not api_key:
+        return jsonify({"error": "No hay API key configurada."}), 503
+
+    code_section = f"\nCÓDIGO DEL ESTUDIANTE:\n{code}\n" if code else ""
+    prompt = ("Eres un asistente para un evaluador universitario que revisa entregas de código.\n"
+              "Responde de forma concisa y directa. No des una calificación — solo responde la pregunta."
+              + code_section +
+              f"\nPREGUNTA DEL EVALUADOR:\n{question}")
+
+    answer = _call_llm_question(provider, model, api_key, prompt)
+    if answer is None:
+        return jsonify({"error": "El LLM no pudo responder. Intenta de nuevo."}), 503
+    return jsonify({"answer": answer})
 
 
 def build_job_config_dir(username: str) -> str:

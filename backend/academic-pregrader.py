@@ -597,6 +597,11 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
         print("Error leyendo el PDF:", e)
         return
 
+    extra_notes = os.environ.get("PREGRADER_EXTRA_NOTES", "").strip()
+    if extra_notes:
+        enunciado_texto += f"\n\nINDICACIONES ADICIONALES DEL EVALUADOR:\n{extra_notes}"
+        print("Indicaciones adicionales incluidas en el enunciado.")
+
     # ── Config ────────────────────────────────────────────────────────────────
     llm_provider = config.get("llm", "provider", fallback="openai")
     llm_model    = config.get("llm", "model",    fallback="gpt-4o")

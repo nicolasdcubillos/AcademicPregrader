@@ -389,7 +389,7 @@
     .btn-dl-primary:active, .btn-dl-secondary:active { transform: translateY(0); }
 
     /* ── Student grid ── */
-    .students-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px,1fr)); gap: 12px; }
+    .students-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px,1fr)); gap: 14px; }
     @media (max-width: 560px) { .students-grid { grid-template-columns: 1fr; } }
     .stu-card {
       background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);
@@ -489,6 +489,57 @@
     .stu-comment-edit:focus { border-color: var(--p1); box-shadow: 0 0 0 2px rgba(99,102,241,.12); }
     .stu-comment-edit::placeholder { color: var(--text-3); }
     .stu-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Extra notes (upload) ── */
+    .extra-notes-wrap { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+    .extra-notes-label { font-size: .72rem; font-weight: 600; color: var(--text-2); display: flex; align-items: center; gap: 5px; }
+    .extra-notes-opt { font-weight: 400; color: var(--text-3); }
+    .extra-notes-input {
+      font-size: .78rem; line-height: 1.6; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-left: 2px solid rgba(99,102,241,.3);
+      border-radius: 0 7px 7px 0; padding: 9px 12px; width: 100%; resize: vertical;
+      min-height: 52px; font-family: var(--font); outline: none; box-sizing: border-box;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .extra-notes-input:focus { border-color: var(--p1); box-shadow: 0 0 0 2px rgba(99,102,241,.12); }
+    .extra-notes-input::placeholder { color: var(--text-3); }
+
+    /* ── Ask AI panel on cards ── */
+    .ask-ai-panel { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .ask-ai-panel.hidden { display: none; }
+    .ask-ai-input-row { display: flex; gap: 6px; align-items: flex-end; }
+    .ask-ai-input {
+      flex: 1; font-size: .77rem; line-height: 1.5; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--r-xs); padding: 7px 10px;
+      font-family: var(--font); outline: none; resize: none; min-height: 36px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .ask-ai-input:focus { border-color: var(--p1); box-shadow: 0 0 0 2px rgba(99,102,241,.12); }
+    .ask-ai-input::placeholder { color: var(--text-3); }
+    .ask-ai-send {
+      background: var(--p1); border: none; border-radius: var(--r-xs); padding: 7px 14px;
+      color: #fff; font-family: var(--font); font-size: .72rem; font-weight: 600; cursor: pointer;
+      white-space: nowrap; flex-shrink: 0; transition: opacity .15s;
+    }
+    .ask-ai-send:hover { opacity: .85; }
+    .ask-ai-send:disabled { opacity: .4; cursor: default; }
+    .ask-ai-response {
+      font-size: .77rem; line-height: 1.65; color: var(--text-2); background: var(--surface);
+      border: 1px solid var(--border); border-left: 2px solid var(--p1);
+      border-radius: 0 var(--r-xs) var(--r-xs) 0; padding: 9px 12px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .ask-ai-response.hidden { display: none; }
+    .ask-ai-response.loading { color: var(--text-3); font-style: italic; }
+    .ask-ai-response.error { border-left-color: var(--red); color: var(--red); }
+    .ask-ai-btn {
+      align-self: flex-start; background: var(--surface); border: 1px solid var(--border-bright);
+      border-radius: var(--r-xs); padding: 6px 12px; color: var(--text-2);
+      font-family: var(--font); font-size: .72rem; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 5px; transition: all .18s;
+    }
+    .ask-ai-btn:hover { border-color: var(--p1); color: var(--p3); background: rgba(90,103,214,.08); }
+    .ask-ai-btn svg { width: 13px; height: 13px; }
     .stu-copy-btn {
       background: var(--surface); border: 1px solid var(--border-bright); border-radius: var(--r-xs);
       padding: 6px 12px; color: var(--text-2); font-family: var(--font); font-size: .72rem;
@@ -816,6 +867,15 @@
           <div class="upload-filename" id="zip-filename"></div>
           <div class="upload-change">Clic para cambiar</div>
         </div>
+      </div>
+      <div class="extra-notes-wrap">
+        <label class="extra-notes-label" for="extra-notes">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Indicaciones adicionales para la IA
+          <span class="extra-notes-opt">(opcional)</span>
+        </label>
+        <textarea class="extra-notes-input" id="extra-notes" rows="2"
+          placeholder="Ej: El método main no es obligatorio. Ignorar manejo de excepciones. La eficiencia no cuenta, solo que funcione correctamente…"></textarea>
       </div>
       <button class="btn-run" id="btn-run" onclick="runPregrader()" disabled>
         <svg width="13" height="13" viewBox="0 0 15 15" fill="currentColor"><path d="M3 2.5l9 5-9 5V2.5z"/></svg>
@@ -1147,6 +1207,8 @@
       const fd = new FormData();
       fd.append('zip_file', _files.zip, _files.zip.name);
       fd.append('pdf_file', _files.pdf, _files.pdf.name);
+      const extraNotes = (document.getElementById('extra-notes')?.value || '').trim();
+      if (extraNotes) fd.append('extra_notes', extraNotes);
 
       let jobId;
       try {
@@ -1395,6 +1457,19 @@
             Copiar nota
           </button>
           ${previewHtml}
+          <button class="ask-ai-btn" onclick="toggleAskAI(${id})" title="Consultar IA sobre el código">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Ask AI
+          </button>
+        </div>
+        <div class="ask-ai-panel hidden" id="ask-ai-${id}">
+          <div class="ask-ai-input-row">
+            <textarea class="ask-ai-input" id="ask-ai-q-${id}" rows="2"
+              placeholder="Pregunta algo sobre el código de este estudiante…"
+              onkeydown="askAIKeydown(event,${id})"></textarea>
+            <button class="ask-ai-send" id="ask-ai-send-${id}" onclick="submitAskAI(${id})">Enviar</button>
+          </div>
+          <div class="ask-ai-response hidden" id="ask-ai-r-${id}"></div>
         </div>`;
       return card;
     }
@@ -1565,6 +1640,61 @@
         fb.textContent = 'Error: ' + e.message;
       } finally {
         btn.disabled = false;
+      }
+    }
+
+    // ── Ask AI ──
+    function toggleAskAI(id) {
+      const panel = document.getElementById('ask-ai-' + id);
+      if (!panel) return;
+      panel.classList.toggle('hidden');
+      if (!panel.classList.contains('hidden')) {
+        const inp = document.getElementById('ask-ai-q-' + id);
+        if (inp) setTimeout(() => inp.focus(), 50);
+      }
+    }
+
+    function askAIKeydown(e, id) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitAskAI(id); }
+    }
+
+    async function submitAskAI(id) {
+      const qEl  = document.getElementById('ask-ai-q-' + id);
+      const rEl  = document.getElementById('ask-ai-r-' + id);
+      const send = document.getElementById('ask-ai-send-' + id);
+      if (!qEl || !rEl) return;
+      const question = qEl.value.trim();
+      if (!question) return;
+
+      // Get code for this card from _previewCodes via card dataset
+      const card = qEl.closest('.stu-card');
+      const cardId = card ? parseInt(card.dataset.id, 10) : -1;
+      const result = liveResults.find(r => r._id === cardId);
+      const code = result?.codigo || '';
+
+      send.disabled = true;
+      rEl.className = 'ask-ai-response loading';
+      rEl.textContent = 'Consultando IA…';
+
+      try {
+        const res = await fetch('/ask_ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, question }),
+        });
+        const pl = await res.json();
+        if (!res.ok || pl.error) {
+          rEl.className = 'ask-ai-response error';
+          rEl.textContent = pl.error || 'Error desconocido.';
+        } else {
+          rEl.className = 'ask-ai-response';
+          rEl.textContent = pl.answer;
+        }
+      } catch (e) {
+        rEl.className = 'ask-ai-response error';
+        rEl.textContent = 'Error de red: ' + e.message;
+      } finally {
+        send.disabled = false;
       }
     }
 
