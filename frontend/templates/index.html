@@ -446,6 +446,20 @@
 
     /* ── Code preview modal ── */
     .modal.modal-code { max-width: 860px; }
+    /* ── Diff / plagiarism compare modal ── */
+    .modal.modal-diff { max-width: min(1560px, 96vw); width: 100%; }
+    .diff-meta { font-size: .7rem; color: var(--text-3); font-family: var(--mono); display: flex; align-items: center; gap: 8px; }
+    .diff-sim-badge { font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: rgba(245,158,11,.12); color: var(--yellow); border: 1px solid rgba(245,158,11,.28); }
+    .diff-panes { display: grid; grid-template-columns: 1fr 1px 1fr; height: 70vh; overflow: hidden; border-top: 1px solid var(--border); }
+    .diff-pane { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+    .diff-pane-header {
+      padding: 9px 18px; background: var(--surface-2); border-bottom: 1px solid var(--border);
+      font-size: .76rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    .diff-pane-header .diff-avatar { width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: .6rem; font-weight: 800; color: #fff; flex-shrink: 0; }
+    .diff-pane .code-view { flex: 1; border: none; border-radius: 0; max-height: none; height: 100%; margin: 0; overflow: auto; }
+    .diff-divider { background: var(--border); }
+    .stu-badge-btn { cursor: pointer; font-family: inherit; }
     .code-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .code-meta { font-size: .7rem; color: var(--text-3); font-family: var(--mono); }
     .code-copy { margin-left: auto; background: var(--surface-2); border: 1px solid var(--border-bright); border-radius: var(--r-xs); padding: 5px 12px; color: var(--text-2); font-family: var(--font); font-size: .72rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all .18s; }
@@ -767,6 +781,39 @@
           </button>
         </div>
         <pre class="code-view" id="code-modal-body"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Plagiarism diff modal ── -->
+  <div class="modal-overlay hidden" id="diff-overlay" onclick="closeDiffOutside(event)">
+    <div class="modal modal-diff" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--yellow)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Comparación de código
+        </span>
+        <div class="diff-meta">
+          <span id="diff-sim-label" class="diff-sim-badge"></span>
+        </div>
+        <button class="modal-close" onclick="closeDiff()">&#x2715;</button>
+      </div>
+      <div class="diff-panes">
+        <div class="diff-pane">
+          <div class="diff-pane-header">
+            <span class="diff-avatar" id="diff-av-a"></span>
+            <span id="diff-name-a">Estudiante A</span>
+          </div>
+          <pre class="code-view" id="diff-code-a"></pre>
+        </div>
+        <div class="diff-divider"></div>
+        <div class="diff-pane">
+          <div class="diff-pane-header">
+            <span class="diff-avatar" id="diff-av-b"></span>
+            <span id="diff-name-b">Estudiante B</span>
+          </div>
+          <pre class="code-view" id="diff-code-b"></pre>
+        </div>
       </div>
     </div>
   </div>
@@ -1139,7 +1186,7 @@
     function openSettings()  { document.getElementById('settings-overlay').classList.remove('hidden'); }
     function closeSettings() { document.getElementById('settings-overlay').classList.add('hidden'); }
     function closeSettingsOutside(e) { if (e.target === document.getElementById('settings-overlay')) closeSettings(); }
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettings(); closeCodePreview(); closeCampus(); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettings(); closeCodePreview(); closeCampus(); closeDiff(); } });
 
     // ── File upload ──
     const _files = { zip: null, pdf: null };
@@ -1427,7 +1474,7 @@
       if      (compilaRaw === 'SI')  badges += '<span class="stu-badge ok">Compila</span>';
       else if (compilaRaw && compilaRaw !== 'N/A') badges += '<span class="stu-badge warn">Error compilación</span>';
       else if (compilaRaw === 'N/A') badges += '<span class="stu-badge muted">N/A</span>';
-      if (plagioRaw) badges += `<span class="stu-badge amber" title="${esc(plagioRaw)}">${esc(plagioRaw)}</span>`;
+      if (plagioRaw) badges += `<button class="stu-badge amber stu-badge-btn" onclick="openDiff(${id})" title="Ver comparación lado a lado">${esc(plagioRaw)}</button>`;
 
       const errHtml = (compilaRaw && compilaRaw !== 'SI' && compilaRaw !== 'N/A')
         ? `<div class="stu-error">${esc(compilaRaw.slice(0,600))}${compilaRaw.length>600?'\n…':''}</div>` : '';
@@ -1616,6 +1663,50 @@
       document.getElementById('campus-feedback').classList.add('hidden');
       document.getElementById('campus-overlay').classList.remove('hidden');
       setTimeout(() => document.getElementById('campus-item').focus(), 50);
+    }
+
+    function closeDiff() { document.getElementById('diff-overlay').classList.add('hidden'); }
+    function closeDiffOutside(e) { if (e.target === document.getElementById('diff-overlay')) closeDiff(); }
+
+    function parsePlagioName(plagioRaw) {
+      const m = (plagioRaw || '').match(/^Con:\s*(.+?)\s*\(\d/);
+      return m ? m[1].trim() : null;
+    }
+
+    function openDiff(studentId) {
+      const ra = liveResults.find(r => r._id === studentId);
+      if (!ra) return;
+
+      const otherName = parsePlagioName(ra.plagio || '');
+      const rb = otherName ? liveResults.find(r => r.estudiante === otherName) : null;
+
+      // similarity label
+      const simMatch = (ra.plagio || '').match(/(\d+%)/);
+      const simEl = document.getElementById('diff-sim-label');
+      simEl.textContent = simMatch ? `Similitud: ${simMatch[1]}` : 'Posible plagio';
+
+      function fillPane(nameEl, avEl, codeEl, res, fallbackName) {
+        const name = res?.estudiante || fallbackName || '—';
+        nameEl.textContent = name;
+        avEl.textContent = getInitials(name);
+        avEl.style.background = avatarColor(name);
+        codeEl.classList.toggle('hljs', !!window.hljs);
+        codeEl.innerHTML = res?.codigo
+          ? highlightCodeFiles(res.codigo)
+          : '<span class="code-empty">Código no disponible.</span>';
+        codeEl.scrollTop = 0;
+      }
+
+      fillPane(
+        document.getElementById('diff-name-a'), document.getElementById('diff-av-a'), document.getElementById('diff-code-a'),
+        ra, ra.estudiante
+      );
+      fillPane(
+        document.getElementById('diff-name-b'), document.getElementById('diff-av-b'), document.getElementById('diff-code-b'),
+        rb, otherName
+      );
+
+      document.getElementById('diff-overlay').classList.remove('hidden');
     }
 
     function closeCampus() { document.getElementById('campus-overlay').classList.add('hidden'); }
