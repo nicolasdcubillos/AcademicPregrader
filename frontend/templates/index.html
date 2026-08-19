@@ -491,17 +491,29 @@
     .stu-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
     /* ── Extra notes (upload) ── */
-    .extra-notes-wrap { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
-    .extra-notes-label { font-size: .72rem; font-weight: 600; color: var(--text-2); display: flex; align-items: center; gap: 5px; }
+    .extra-notes-wrap { display: flex; flex-direction: column; gap: 0; margin-top: 14px; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+    .extra-notes-toggle {
+      display: flex; align-items: center; gap: 7px; width: 100%;
+      padding: 9px 13px; background: var(--surface-2); border: none; cursor: pointer;
+      font-family: var(--font); font-size: .74rem; font-weight: 600; color: var(--text-2);
+      text-align: left; transition: background .15s, color .15s;
+    }
+    .extra-notes-toggle:hover { background: var(--surface-3); color: var(--text); }
+    .extra-notes-toggle .en-chevron { margin-left: auto; transition: transform .2s; color: var(--text-3); flex-shrink: 0; }
+    .extra-notes-toggle.open .en-chevron { transform: rotate(180deg); }
+    .extra-notes-toggle .en-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--p1); flex-shrink: 0; opacity: 0; transition: opacity .15s; }
+    .extra-notes-toggle.has-content .en-dot { opacity: 1; }
     .extra-notes-opt { font-weight: 400; color: var(--text-3); }
+    .extra-notes-body { overflow: hidden; max-height: 0; transition: max-height .22s ease; }
+    .extra-notes-body.open { max-height: 200px; }
     .extra-notes-input {
       font-size: .78rem; line-height: 1.6; color: var(--text); background: var(--surface);
-      border: 1px solid var(--border); border-left: 2px solid rgba(99,102,241,.3);
-      border-radius: 0 7px 7px 0; padding: 9px 12px; width: 100%; resize: vertical;
-      min-height: 52px; font-family: var(--font); outline: none; box-sizing: border-box;
-      transition: border-color .15s, box-shadow .15s;
+      border: none; border-top: 1px solid var(--border);
+      padding: 10px 13px; width: 100%; resize: vertical;
+      min-height: 56px; font-family: var(--font); outline: none; box-sizing: border-box;
+      transition: box-shadow .15s;
     }
-    .extra-notes-input:focus { border-color: var(--p1); box-shadow: 0 0 0 2px rgba(99,102,241,.12); }
+    .extra-notes-input:focus { box-shadow: inset 0 0 0 2px rgba(99,102,241,.18); }
     .extra-notes-input::placeholder { color: var(--text-3); }
 
     /* ── Ask AI panel on cards ── */
@@ -869,13 +881,18 @@
         </div>
       </div>
       <div class="extra-notes-wrap">
-        <label class="extra-notes-label" for="extra-notes">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <button class="extra-notes-toggle" id="extra-notes-toggle" onclick="toggleExtraNotes()" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Indicaciones adicionales para la IA
           <span class="extra-notes-opt">(opcional)</span>
-        </label>
-        <textarea class="extra-notes-input" id="extra-notes" rows="2"
-          placeholder="Ej: El método main no es obligatorio. Ignorar manejo de excepciones. La eficiencia no cuenta, solo que funcione correctamente…"></textarea>
+          <span class="en-dot"></span>
+          <svg class="en-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="extra-notes-body" id="extra-notes-body">
+          <textarea class="extra-notes-input" id="extra-notes" rows="2"
+            oninput="updateExtraNotesDot()"
+            placeholder="Ej: El método main no es obligatorio. Ignorar manejo de excepciones. La eficiencia no cuenta, solo que funcione correctamente…"></textarea>
+        </div>
       </div>
       <button class="btn-run" id="btn-run" onclick="runPregrader()" disabled>
         <svg width="13" height="13" viewBox="0 0 15 15" fill="currentColor"><path d="M3 2.5l9 5-9 5V2.5z"/></svg>
@@ -1644,6 +1661,20 @@
     }
 
     // ── Ask AI ──
+    function toggleExtraNotes() {
+      const toggle = document.getElementById('extra-notes-toggle');
+      const body   = document.getElementById('extra-notes-body');
+      const isOpen = body.classList.toggle('open');
+      toggle.classList.toggle('open', isOpen);
+      if (isOpen) setTimeout(() => document.getElementById('extra-notes')?.focus(), 230);
+    }
+
+    function updateExtraNotesDot() {
+      const toggle = document.getElementById('extra-notes-toggle');
+      const val = document.getElementById('extra-notes')?.value || '';
+      toggle?.classList.toggle('has-content', val.trim().length > 0);
+    }
+
     function toggleAskAI(id) {
       const panel = document.getElementById('ask-ai-' + id);
       if (!panel) return;
