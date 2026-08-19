@@ -965,9 +965,9 @@
       </div>
       <div class="log-header">
         <span class="log-label">Log de proceso</span>
-        <button class="log-toggle" onclick="toggleLog()">Ocultar</button>
+        <button class="log-toggle" onclick="toggleLog()">Ver log</button>
       </div>
-      <div class="log-wrap" id="log-output"><span class="log-empty">Esperando salida...</span></div>
+      <div class="log-wrap" id="log-output" style="display:none"><span class="log-empty">Esperando salida...</span></div>
       <button class="btn-cancel hidden" id="btn-cancel" onclick="stopJob()">
         <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l12 12M13 1L1 13"/></svg>
         Cancelar calificación
@@ -1031,7 +1031,7 @@
     let completedStudents = 0;
     let currentSort       = 'desc';
     let activeFilters     = new Set();
-    let logVisible        = true;
+    let logVisible        = false;
     let _previewCodes     = [];
     let _resultSeq        = 0;
     let _lastRendered     = [];
@@ -1251,6 +1251,9 @@
       await saveConfig();
 
       document.getElementById('log-output').innerHTML = '<span class="log-empty">Esperando salida...</span>';
+      document.getElementById('log-output').style.display = 'none';
+      document.querySelector('.log-toggle').textContent = 'Ver log';
+      logVisible = false;
       document.getElementById('landing').classList.add('landing--flow');
       document.getElementById('progress-card').classList.remove('hidden');
       document.getElementById('live-board').classList.add('hidden');
@@ -1324,7 +1327,7 @@
       const btn = document.querySelector('.log-toggle');
       logVisible = !logVisible;
       log.style.display = logVisible ? '' : 'none';
-      btn.textContent   = logVisible ? 'Ocultar' : 'Mostrar';
+      btn.textContent   = logVisible ? 'Ocultar log' : 'Ver log';
     }
 
     function truncName(n, max) { return n.length <= max ? n : n.slice(0, max-1) + '…'; }
