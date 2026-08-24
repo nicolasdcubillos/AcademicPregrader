@@ -585,8 +585,14 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
     with zipfile.ZipFile(zip_path, 'r') as zf:
         zf.extractall(tmp_dir)
     tmp_path = Path(tmp_dir)
-    top_dirs  = [d for d in tmp_path.iterdir() if d.is_dir()]
-    top_files = [f for f in tmp_path.iterdir() if f.is_file()]
+    # Los ZIP creados en macOS (Finder "Comprimir") agregan una carpeta
+    # "__MACOSX" hermana y archivos ocultos como ".DS_Store" en la raíz.
+    # Sin filtrarlos, la detección de "única carpeta raíz" fallaba y todas
+    # las entregas terminaban tratándose como una sola, en vez de iterar
+    # cada carpeta de estudiante por separado.
+    top_dirs  = [d for d in tmp_path.iterdir()
+                 if d.is_dir() and not d.name.startswith('.') and d.name != '__MACOSX']
+    top_files = [f for f in tmp_path.iterdir() if f.is_file() and not f.name.startswith('.')]
     base_path = top_dirs[0] if len(top_dirs) == 1 and not top_files else tmp_path
 
     enunciado_file = Path(enunciado_path)
