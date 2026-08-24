@@ -1803,7 +1803,7 @@
       const rb = otherName ? liveResults.find(r => r.estudiante === otherName) : null;
 
       // similarity label
-      const simMatch = (ra.plagio || '').match(/(\d+%)/);
+      const simMatch = (ra.plagio || '').match(/(\d+(?:\.\d+)?%)/);
       const simEl = document.getElementById('diff-sim-label');
       simEl.textContent = simMatch ? `Similitud: ${simMatch[1]}` : 'Posible plagio';
 
