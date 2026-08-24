@@ -474,6 +474,51 @@
     .code-view .code-file { color: #9aa6ee; font-weight: 600; display: block; }
     .code-view.hljs { background: var(--code-bg) !important; }
     .code-empty { color: var(--text-3); font-size: .78rem; padding: 24px 0; text-align: center; }
+
+    /* ── Run / console panel (compile & execute preview) ── */
+    .run-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .run-btn {
+      background: var(--green-dim); border: 1px solid rgba(16,185,129,.35); border-radius: var(--r-xs);
+      padding: 5px 13px; color: var(--green); font-family: var(--font); font-size: .72rem; font-weight: 700;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .18s;
+    }
+    .run-btn:hover:not(:disabled) { background: var(--green); color: #06120c; }
+    .run-btn:disabled { opacity: .55; cursor: wait; }
+    .run-btn svg { width: 12px; height: 12px; }
+    .stdin-toggle-btn {
+      background: var(--surface-2); border: 1px solid var(--border-bright); border-radius: var(--r-xs);
+      padding: 5px 12px; color: var(--text-2); font-family: var(--font); font-size: .72rem; font-weight: 500;
+      cursor: pointer; transition: all .18s;
+    }
+    .stdin-toggle-btn:hover { border-color: var(--p1); color: var(--p3); }
+    .stdin-toggle-btn.active { border-color: var(--p1); color: var(--p3); background: rgba(90,103,214,.08); }
+    .run-lang-badge {
+      font-size: .68rem; font-weight: 700; padding: 2px 9px; border-radius: 99px;
+      background: var(--surface-2); border: 1px solid var(--border-bright); color: var(--text-2); text-transform: uppercase;
+    }
+    .stdin-box {
+      width: 100%; background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--r-sm);
+      color: #c8cbe8; font-family: var(--mono); font-size: .74rem; padding: 10px 12px; resize: vertical;
+      min-height: 56px; max-height: 140px;
+    }
+    .stdin-label { font-size: .68rem; color: var(--text-3); margin: 2px 0 4px; }
+    .console-panel { display: flex; flex-direction: column; gap: 8px; }
+    .console-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .console-status {
+      font-size: .68rem; font-weight: 700; padding: 3px 10px; border-radius: 99px; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .console-status.ok      { background: var(--green-dim);  color: var(--green); border: 1px solid rgba(16,185,129,.3); }
+    .console-status.error   { background: var(--red-dim);    color: var(--red);   border: 1px solid rgba(248,113,113,.3); }
+    .console-status.running { background: var(--yellow-dim); color: var(--yellow); border: 1px solid rgba(245,158,11,.3); }
+    .console-meta { font-size: .68rem; color: var(--text-3); font-family: var(--mono); margin-left: auto; }
+    .console-out {
+      background: #05060a; border: 1px solid var(--border); border-radius: var(--r-sm);
+      padding: 12px 14px; max-height: 30vh; overflow: auto; margin: 0;
+      font-family: var(--mono); font-size: .74rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    }
+    .console-out .stdout-line { color: #c8cbe8; }
+    .console-out .stderr-line { color: #f87171; }
+    .console-empty { color: var(--text-3); font-size: .72rem; }
     .stu-preview-btn {
       align-self: flex-start; background: var(--surface); border: 1px solid var(--border-bright);
       border-radius: var(--r-xs); padding: 6px 12px; color: var(--text-2);
@@ -775,12 +820,33 @@
       <div class="modal-body" style="gap:12px">
         <div class="code-toolbar">
           <span class="code-meta" id="code-modal-meta"></span>
+          <span class="run-lang-badge hidden" id="run-lang-badge"></span>
           <button class="code-copy" id="code-copy-btn" onclick="copyPreviewCode()">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5H6z"/><path d="M2 5a2 2 0 0 1 2-2v1.5A.5.5 0 0 0 3.5 5v9a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5H12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/></svg>
             Copiar
           </button>
         </div>
         <pre class="code-view" id="code-modal-body"></pre>
+
+        <div class="run-toolbar" id="run-toolbar">
+          <button class="run-btn" id="run-code-btn" onclick="runPreviewCode()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            Ejecutar
+          </button>
+          <button class="stdin-toggle-btn" id="stdin-toggle-btn" onclick="toggleStdinBox()">Entrada (stdin)</button>
+        </div>
+        <div class="hidden" id="stdin-wrap">
+          <div class="stdin-label">Entrada estándar (opcional) — se envía al programa al ejecutarlo</div>
+          <textarea class="stdin-box" id="stdin-box" placeholder="Escribe aquí los valores que el programa leerá de stdin, uno por línea..."></textarea>
+        </div>
+
+        <div class="console-panel hidden" id="console-panel">
+          <div class="console-header">
+            <span class="console-status hidden" id="console-status"></span>
+            <span class="console-meta" id="console-meta"></span>
+          </div>
+          <pre class="console-out" id="console-out"></pre>
+        </div>
       </div>
     </div>
   </div>
@@ -1855,9 +1921,20 @@
       return html;
     }
 
+    let _currentPreviewIdx = -1;
+    const RUNNABLE_LANGS = new Set(['python', 'cpp', 'c', 'java']);
+
+    function detectRunnableLang(code) {
+      // Usa el primer marcador "// --- archivo ---" para inferir el lenguaje ejecutable.
+      const m = (code || '').match(/^\/\/ --- (.*) ---$/m);
+      const lang = m ? detectLang(m[1].trim()) : 'plaintext';
+      return lang === 'c' ? 'cpp' : lang;
+    }
+
     function openCodePreview(idx) {
       const item = _previewCodes[idx];
       if (!item) return;
+      _currentPreviewIdx = idx;
       document.getElementById('code-modal-name').textContent = item.name || 'Código';
       const lines = item.code ? item.code.split('\n').length : 0;
       const chars = item.code ? item.code.length : 0;
@@ -1870,7 +1947,96 @@
         : '<span class="code-empty">No hay código disponible para esta entrega.</span>';
       body.scrollTop = 0;
       resetCopyBtn();
+
+      // Reset del panel de ejecución
+      const lang = detectRunnableLang(item.code);
+      const runToolbar = document.getElementById('run-toolbar');
+      const langBadge = document.getElementById('run-lang-badge');
+      const runnable = !!item.code && RUNNABLE_LANGS.has(lang);
+      runToolbar.classList.toggle('hidden', !runnable);
+      langBadge.classList.toggle('hidden', !runnable);
+      langBadge.textContent = lang === 'cpp' ? 'C++' : lang === 'java' ? 'Java' : lang === 'python' ? 'Python' : lang;
+      document.getElementById('stdin-wrap').classList.add('hidden');
+      document.getElementById('stdin-toggle-btn').classList.remove('active');
+      document.getElementById('stdin-box').value = '';
+      document.getElementById('console-panel').classList.add('hidden');
+      const runBtn = document.getElementById('run-code-btn');
+      runBtn.disabled = false;
+      runBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Ejecutar';
+
       document.getElementById('code-overlay').classList.remove('hidden');
+    }
+
+    function toggleStdinBox() {
+      const wrap = document.getElementById('stdin-wrap');
+      const btn = document.getElementById('stdin-toggle-btn');
+      const show = wrap.classList.toggle('hidden') === false;
+      btn.classList.toggle('active', show);
+      if (show) document.getElementById('stdin-box').focus();
+    }
+
+    async function runPreviewCode() {
+      const item = _previewCodes[_currentPreviewIdx];
+      if (!item || !item.code) return;
+      const runBtn = document.getElementById('run-code-btn');
+      const panel = document.getElementById('console-panel');
+      const statusEl = document.getElementById('console-status');
+      const metaEl = document.getElementById('console-meta');
+      const outEl = document.getElementById('console-out');
+      const stdinText = document.getElementById('stdin-box').value;
+
+      runBtn.disabled = true;
+      runBtn.innerHTML = 'Ejecutando…';
+      panel.classList.remove('hidden');
+      statusEl.className = 'console-status running';
+      statusEl.textContent = '● Ejecutando…';
+      metaEl.textContent = '';
+      outEl.innerHTML = '<span class="console-empty">Compilando / ejecutando…</span>';
+
+      try {
+        const res = await fetch('/run_code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: item.code, stdin: stdinText }),
+        });
+        const pl = await res.json();
+        renderConsoleResult(pl, res.ok);
+      } catch (e) {
+        statusEl.className = 'console-status error';
+        statusEl.textContent = '✕ Error';
+        outEl.innerHTML = `<span class="stderr-line">Error de red: ${esc(e.message)}</span>`;
+      } finally {
+        runBtn.disabled = false;
+        runBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Ejecutar';
+      }
+    }
+
+    function renderConsoleResult(pl, httpOk) {
+      const statusEl = document.getElementById('console-status');
+      const metaEl = document.getElementById('console-meta');
+      const outEl = document.getElementById('console-out');
+
+      if (!httpOk || pl.error) {
+        statusEl.className = 'console-status error';
+        statusEl.textContent = '✕ Error';
+        outEl.innerHTML = `<span class="stderr-line">${esc(pl.error || 'Error desconocido.')}</span>`;
+        return;
+      }
+
+      const stageLabel = pl.stage === 'compile' ? 'Error de compilación' : (pl.ok ? 'Ejecución exitosa' : 'Error en ejecución');
+      statusEl.className = 'console-status ' + (pl.ok ? 'ok' : 'error');
+      statusEl.textContent = (pl.ok ? '✓ ' : '✕ ') + stageLabel;
+
+      const metaParts = [];
+      if (pl.duration_ms != null) metaParts.push(`${pl.duration_ms} ms`);
+      if (pl.exit_code != null) metaParts.push(`exit code ${pl.exit_code}`);
+      if (pl.timed_out) metaParts.push('tiempo agotado');
+      metaEl.textContent = metaParts.join(' · ');
+
+      let html = '';
+      if (pl.stdout) html += `<span class="stdout-line">${esc(pl.stdout)}</span>`;
+      if (pl.stderr) html += (html ? '\n' : '') + `<span class="stderr-line">${esc(pl.stderr)}</span>`;
+      outEl.innerHTML = html || '<span class="console-empty">(sin salida)</span>';
     }
 
     function closeCodePreview() { document.getElementById('code-overlay').classList.add('hidden'); }
