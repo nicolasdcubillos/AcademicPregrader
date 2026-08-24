@@ -171,10 +171,11 @@ def run_pregrader():
 
     extra_notes = (request.form.get("extra_notes") or "").strip()[:4000]
 
-    auth.log_event(session.get("user"), client_ip(), "grade_run", detail=zip_name)
+    username = session["user"]
+    auth.log_event(username, client_ip(), "grade_run", detail=zip_name)
 
     # Config efectiva del job: global (admin) + personal del usuario.
-    job_cfg_dir = build_job_config_dir(session["user"])
+    job_cfg_dir = build_job_config_dir(username)
 
     job_id = os.urandom(8).hex()
     q: queue.Queue = queue.Queue()
@@ -240,6 +241,11 @@ def run_pregrader():
             return
 
         _results[job_id] = job_results
+        if job_results:
+            try:
+                auth.save_grading_history(username, job_id, zip_name, job_results)
+            except Exception as exc:
+                print(f"[historial] No se pudo guardar el historial de {username}: {exc}")
         q.put({"type": "done", "job_id": job_id, "count": len(job_results)})
         q.put(None)
 
@@ -529,19 +535,47 @@ def update_results(job_id: str):
     data = request.get_json(silent=True)
     if not isinstance(data, list):
         return jsonify({"ok": False, "error": "Formato inválido."}), 400
+    # Preserva el código fuente ya calculado (el cliente no lo reenvía en cada sync).
+    previous_by_name = {r.get("estudiante", ""): r for r in _results.get(job_id, [])}
     cleaned = []
     for item in data[:2000]:
         if not isinstance(item, dict):
             continue
+        estudiante = str(item.get("estudiante", ""))[:300]
         cleaned.append({
-            "estudiante": str(item.get("estudiante", ""))[:300],
+            "estudiante": estudiante,
             "compila":    str(item.get("compila", ""))[:4000],
             "plagio":     str(item.get("plagio", ""))[:300],
             "nota":       item.get("nota", ""),
             "comentario": str(item.get("comentario", ""))[:5000],
+            "codigo":     previous_by_name.get(estudiante, {}).get("codigo", ""),
         })
     _results[job_id] = cleaned
+    try:
+        auth.update_grading_history_results(session["user"], job_id, cleaned)
+    except Exception as exc:
+        print(f"[historial] No se pudo sincronizar el historial: {exc}")
     return jsonify({"ok": True, "count": len(cleaned)})
+
+
+@app.route("/history", methods=["GET"])
+@auth.login_required
+def get_history():
+    """Lista (metadatos) de las últimas calificaciones guardadas del usuario actual."""
+    items = auth.get_grading_history(session["user"])
+    return jsonify({"items": items})
+
+
+@app.route("/history/<job_id>", methods=["GET"])
+@auth.login_required
+def get_history_item(job_id: str):
+    """Snapshot completo de una calificación guardada, para retomarla tal cual quedó."""
+    item = auth.get_grading_history_item(session["user"], job_id)
+    if not item:
+        return jsonify({"error": "No se encontró esa calificación en tu historial."}), 404
+    # Repuebla la caché en memoria para que descargas (CSV/Excel/Campus) sigan funcionando.
+    _results[job_id] = item["results"]
+    return jsonify(item)
 
 
 # ==============================

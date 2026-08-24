@@ -458,6 +458,18 @@
     .modal-body   { padding: 20px 22px; display: flex; flex-direction: column; gap: 22px; }
     .modal-footer { padding: 16px 22px 20px; border-top: 1px solid var(--border); }
 
+    /* ── History modal ── */
+    .hist-list { display: flex; flex-direction: column; gap: 8px; }
+    .hist-item { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); }
+    .hist-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .hist-item-label { font-size: .8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+    .hist-item-meta { font-size: .68rem; color: var(--text-3); }
+    .hist-empty, .hist-loading, .hist-error { font-size: .78rem; color: var(--text-3); text-align: center; padding: 18px 0; }
+    .hist-open-btn { flex-shrink: 0; padding: 7px 12px; font-size: .72rem; font-weight: 700; border-radius: var(--r-xs);
+      border: 1px solid var(--p1); color: var(--p3); background: rgba(90,103,214,.08); cursor: pointer; white-space: nowrap; }
+    .hist-open-btn:hover { background: rgba(90,103,214,.16); }
+
     /* ── Code preview modal ── */
     .modal.modal-code { max-width: 860px; }
     /* ── Diff / plagiarism compare modal ── */
@@ -926,6 +938,22 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="history-overlay" onclick="closeHistoryOutside(event)">
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:520px">
+      <div class="modal-header">
+        <span class="modal-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          Mi historial de calificaciones
+        </span>
+        <button class="modal-close" onclick="closeHistory()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="field-hint" style="margin:0">Guardamos tus últimas 10 calificaciones tal como quedaron (notas, comentarios y código). Puedes retomarlas desde cualquier navegador o computador.</p>
+        <div id="history-list" class="hist-list"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Header ── -->
   <header>
     <div class="logo">
@@ -954,6 +982,12 @@
     <button class="btn-gear btn-icon" id="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema">
       <svg class="ic-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
       <svg class="ic-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <button class="btn-gear" onclick="openHistory()">
+      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zM4.5 10a5.5 5.5 0 1111 0 5.5 5.5 0 01-11 0zM10 6a.75.75 0 01.75.75v3l2.25 1.3a.75.75 0 11-.75 1.3l-2.63-1.52A.75.75 0 019.25 10V6.75A.75.75 0 0110 6z" clip-rule="evenodd"/>
+      </svg>
+      Historial
     </button>
     <button class="btn-gear" onclick="openSettings()">
       <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
@@ -1273,7 +1307,78 @@
     function openSettings()  { document.getElementById('settings-overlay').classList.remove('hidden'); }
     function closeSettings() { document.getElementById('settings-overlay').classList.add('hidden'); }
     function closeSettingsOutside(e) { if (e.target === document.getElementById('settings-overlay')) closeSettings(); }
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettings(); closeCodePreview(); closeCampus(); closeDiff(); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettings(); closeCodePreview(); closeCampus(); closeDiff(); closeHistory(); } });
+
+    // ── Historial de calificaciones ──
+    async function openHistory() {
+      document.getElementById('history-overlay').classList.remove('hidden');
+      const list = document.getElementById('history-list');
+      list.innerHTML = '<p class="hist-loading">Cargando tu historial...</p>';
+      try {
+        const res  = await fetch('/history');
+        const data = await res.json();
+        renderHistoryList(data.items || []);
+      } catch (e) {
+        list.innerHTML = '<p class="hist-error">No se pudo cargar el historial.</p>';
+      }
+    }
+    function closeHistory() { document.getElementById('history-overlay')?.classList.add('hidden'); }
+    function closeHistoryOutside(e) { if (e.target === e.currentTarget) closeHistory(); }
+
+    function fmtHistDate(s) {
+      if (!s) return '';
+      const d = new Date(String(s).replace(' ', 'T') + (String(s).includes('Z') ? '' : 'Z'));
+      if (isNaN(d.getTime())) return esc(s);
+      return d.toLocaleString('es-CO', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    }
+
+    function renderHistoryList(items) {
+      const list = document.getElementById('history-list');
+      if (!items.length) {
+        list.innerHTML = '<p class="hist-empty">Aún no tienes calificaciones guardadas. Corre una calificación y aparecerá aquí.</p>';
+        return;
+      }
+      list.innerHTML = items.map(it => `
+        <div class="hist-item">
+          <div class="hist-item-main">
+            <span class="hist-item-label" title="${esc(it.label || 'Calificación')}">${esc(it.label || 'Calificación')}</span>
+            <span class="hist-item-meta">${fmtHistDate(it.updated_at || it.created_at)} · ${it.student_count} estudiante(s)</span>
+          </div>
+          <button class="hist-open-btn" onclick="resumeHistory('${it.job_id}')">Retomar</button>
+        </div>
+      `).join('');
+    }
+
+    async function resumeHistory(jobId) {
+      try {
+        const res = await fetch(`/history/${jobId}`);
+        if (!res.ok) { alert('No se pudo cargar esa calificación.'); return; }
+        const item = await res.json();
+        closeHistory();
+
+        liveResults = (item.results || []).map(r => ({ ...r, _id: ++_resultSeq }));
+        currentJobId = jobId;
+        totalStudents = liveResults.length; completedStudents = liveResults.length;
+        activeFilters = new Set(); currentSort = 'apellido'; studentSearchQuery = '';
+        const searchInput = document.getElementById('student-search-input');
+        if (searchInput) searchInput.value = '';
+        document.getElementById('search-clear-btn')?.classList.add('hidden');
+
+        document.getElementById('landing').classList.add('landing--flow');
+        document.getElementById('progress-card').classList.remove('hidden');
+        document.getElementById('live-board').classList.add('hidden');
+        document.getElementById('log-output').innerHTML = '<span class="log-empty">Esperando salida...</span>';
+
+        setRunning(false);
+        setStatusDot('done');
+        setStatusText('Calificación cargada desde tu historial.');
+        setStatusBadge('Completado', 'done');
+        appendLog(`Historial cargado: "${item.label || jobId}" — ${liveResults.length} estudiante(s).`);
+        showResultsCard();
+      } catch (e) {
+        alert('Error de red al cargar el historial.');
+      }
+    }
 
     // ── File upload ──
     const _files = { zip: null, pdf: null };
