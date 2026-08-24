@@ -483,6 +483,14 @@ def _llm_evaluate_gemini(code, enunciado, model, api_key, max_retries=5):
     return None
 
 
+def _is_openai_reasoning_model(model: str) -> bool:
+    """Modelos de la familia GPT-5 y o-series (o1/o3/o4) son modelos de razonamiento:
+    no aceptan temperature/seed personalizados y usan max_completion_tokens en vez
+    de max_tokens en la API de Chat Completions."""
+    m = (model or "").strip().lower()
+    return m.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
 def _llm_evaluate_openai(code, enunciado, model, api_key, max_retries=5):
     try:
         from openai import OpenAI
@@ -498,20 +506,32 @@ def _llm_evaluate_openai(code, enunciado, model, api_key, max_retries=5):
     client = OpenAI(api_key=api_key)
     prompt = _build_eval_prompt(code, enunciado)
 
+    reasoning_model = _is_openai_reasoning_model(model)
+    call_kwargs = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": _EVAL_SYSTEM_INSTRUCTION},
+            {"role": "user",   "content": prompt},
+        ],
+        "response_format": {"type": "json_object"},
+    }
+    if reasoning_model:
+        # gpt-5/o-series: temperature fija (no configurable), max_completion_tokens
+        # en vez de max_tokens, y esfuerzo de razonamiento mínimo (tarea de
+        # clasificación estructurada, no necesita razonamiento profundo -> más barato/rápido).
+        call_kwargs["max_completion_tokens"] = 1024
+        call_kwargs["reasoning_effort"] = "low"
+    else:
+        call_kwargs["temperature"] = 0.0
+        call_kwargs["seed"] = 42
+        call_kwargs["max_tokens"] = 1024
+
     for attempt in range(1, max_retries + 1):
         if attempt > 1:
             print(f"  -> Reintento {attempt}/{max_retries}...")
             time.sleep(4)
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": _EVAL_SYSTEM_INSTRUCTION},
-                    {"role": "user",   "content": prompt},
-                ],
-                temperature=0.0, seed=42, max_tokens=1024,
-                response_format={"type": "json_object"},
-            )
+            response = client.chat.completions.create(**call_kwargs)
             data = json.loads(response.choices[0].message.content)
             result = _validate_eval_data(data)
             print("  -> JSON validado correctamente")
@@ -610,7 +630,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
 
     # ── Config ────────────────────────────────────────────────────────────────
     llm_provider = config.get("llm", "provider", fallback="openai")
-    llm_model    = config.get("llm", "model",    fallback="gpt-4o")
+    llm_model    = config.get("llm", "model",    fallback="gpt-5-mini")
     if llm_provider == "gemini":
         llm_api_key = os.environ.get("GEMINI_API_KEY", "").strip() or config.get(
             "llm", "gemini_api_key", fallback=""

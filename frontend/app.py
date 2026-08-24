@@ -595,7 +595,7 @@ USER_CONFIG_DEFAULTS = {
     "enable_cache":        False,
     "comment_on_max":      False,
     "llm_provider":        "openai",
-    "llm_model":           "gpt-4o",
+    "llm_model":           "gpt-5-mini",
     "threshold":           0.7,
 }
 
@@ -635,7 +635,7 @@ def _available_providers(cfg: configparser.RawConfigParser) -> list[str]:
 def _provider_defaults(provider: str) -> tuple[str, str]:
     if provider == "gemini":
         return "gemini", "gemini-2.0-flash"
-    return "openai", "gpt-4o"
+    return "openai", "gpt-5-mini"
 
 
 def _effective_provider(cfg: configparser.RawConfigParser, requested: str) -> tuple[str, str | None]:
@@ -645,7 +645,7 @@ def _effective_provider(cfg: configparser.RawConfigParser, requested: str) -> tu
     if available:
         provider = available[0]
         return provider, _provider_defaults(provider)[1]
-    return "openai", "gpt-4o"
+    return "openai", "gpt-5-mini"
 
 
 def _default_jplag() -> str:
@@ -703,6 +703,13 @@ def save_config():
     return jsonify({"ok": True})
 
 
+def _is_openai_reasoning_model(model: str) -> bool:
+    """Modelos GPT-5/o-series: no aceptan temperature/seed personalizados y usan
+    max_completion_tokens en vez de max_tokens (Chat Completions API)."""
+    m = (model or "").strip().lower()
+    return m.startswith(("gpt-5", "o1", "o3", "o4"))
+
+
 def _call_llm_question(provider: str, model: str, api_key: str, prompt: str) -> str | None:
     if provider == "gemini":
         try:
@@ -715,11 +722,14 @@ def _call_llm_question(provider: str, model: str, api_key: str, prompt: str) -> 
     elif provider == "openai":
         try:
             from openai import OpenAI
-            r = OpenAI(api_key=api_key).chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3, max_tokens=1024,
-            )
+            call_kwargs = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            if _is_openai_reasoning_model(model):
+                call_kwargs["max_completion_tokens"] = 1024
+                call_kwargs["reasoning_effort"] = "low"
+            else:
+                call_kwargs["temperature"] = 0.3
+                call_kwargs["max_tokens"] = 1024
+            r = OpenAI(api_key=api_key).chat.completions.create(**call_kwargs)
             return r.choices[0].message.content
         except Exception:
             return None

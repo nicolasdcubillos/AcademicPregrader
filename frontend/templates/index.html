@@ -1183,10 +1183,12 @@
         { value: '__custom__',       label: 'Personalizado...' },
       ],
       openai: [
-        { value: 'gpt-4o',        label: 'GPT-4o — recomendado' },
+        { value: 'gpt-5-mini',    label: 'GPT-5 Mini — recomendado (rápido y económico)' },
+        { value: 'gpt-5-nano',    label: 'GPT-5 Nano — el más barato' },
+        { value: 'gpt-5',         label: 'GPT-5' },
+        { value: 'gpt-4.1-mini',  label: 'GPT-4.1 Mini' },
+        { value: 'gpt-4o',        label: 'GPT-4o' },
         { value: 'gpt-4o-mini',   label: 'GPT-4o Mini' },
-        { value: 'gpt-4-turbo',   label: 'GPT-4 Turbo' },
-        { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
         { value: '__custom__',    label: 'Personalizado...' },
       ],
     };
@@ -1246,7 +1248,7 @@
 
     function getSelectedModel() {
       const sel = document.getElementById('cfg-llm-model');
-      const fallback = getSelectedProvider() === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o';
+      const fallback = getSelectedProvider() === 'gemini' ? 'gemini-2.0-flash' : 'gpt-5-mini';
       if (!sel) return fallback;
       if (sel.value === '__custom__')
         return document.getElementById('cfg-llm-model-custom').value.trim() || fallback;
@@ -1270,7 +1272,7 @@
         _providerAvailability = { openai: !!cfg.openai_available, gemini: !!cfg.gemini_available };
         updateProviderVisibility();
         const provider = cfg.llm_provider || 'openai';
-        const model    = cfg.llm_model    || 'gpt-4o';
+        const model    = cfg.llm_model    || 'gpt-5-mini';
         setProviderCard(provider);
         populateModels(provider, model);
         const thr = parseFloat(cfg.threshold || 0.7).toFixed(2);
