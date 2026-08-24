@@ -118,6 +118,17 @@ _DDL = {
                 username TEXT PRIMARY KEY,
                 data     TEXT NOT NULL
             )""",
+        """CREATE TABLE IF NOT EXISTS grading_history (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT NOT NULL,
+                job_id        TEXT NOT NULL,
+                label         TEXT,
+                student_count INTEGER NOT NULL DEFAULT 0,
+                results       TEXT NOT NULL,
+                created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(username, job_id)
+            )""",
     ],
     "postgres": [
         """CREATE TABLE IF NOT EXISTS users (
@@ -154,6 +165,17 @@ _DDL = {
         """CREATE TABLE IF NOT EXISTS user_config (
                 username TEXT PRIMARY KEY,
                 data     TEXT NOT NULL
+            )""",
+        """CREATE TABLE IF NOT EXISTS grading_history (
+                id            BIGSERIAL PRIMARY KEY,
+                username      TEXT NOT NULL,
+                job_id        TEXT NOT NULL,
+                label         TEXT,
+                student_count INTEGER NOT NULL DEFAULT 0,
+                results       TEXT NOT NULL,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(username, job_id)
             )""",
     ],
 }
@@ -328,6 +350,88 @@ def save_user_config(username: str, data: dict) -> None:
         "ON CONFLICT(username) DO UPDATE SET data = excluded.data",
         (username.strip().lower(), json.dumps(data)),
     )
+
+
+# ── Historial de calificaciones ───────────────────────────────────────────────
+# Guarda, por calificador, el estado completo (tal cual quedó) de sus últimas
+# corridas de calificación, para poder retomarlas desde cualquier navegador o PC.
+
+MAX_HISTORY_PER_USER = 10
+
+
+def _prune_grading_history(username: str) -> None:
+    """Conserva solo las MAX_HISTORY_PER_USER entradas más recientes del usuario."""
+    _execute(
+        f"DELETE FROM grading_history WHERE username = %s AND id NOT IN ("
+        f"  SELECT id FROM grading_history WHERE username = %s "
+        f"  ORDER BY updated_at DESC, id DESC LIMIT {MAX_HISTORY_PER_USER}"
+        f")",
+        (username, username),
+    )
+
+
+def save_grading_history(username: str, job_id: str, label: str, results: list) -> None:
+    """Crea o actualiza (upsert) el snapshot completo de una corrida de calificación."""
+    init_db()
+    username = username.strip().lower()
+    payload = json.dumps(results, ensure_ascii=False)
+    _execute(
+        f"INSERT INTO grading_history (username, job_id, label, student_count, results, created_at, updated_at) "
+        f"VALUES (%s, %s, %s, %s, %s, {_NOW}, {_NOW}) "
+        f"ON CONFLICT(username, job_id) DO UPDATE SET "
+        f"label = excluded.label, student_count = excluded.student_count, "
+        f"results = excluded.results, updated_at = {_NOW}",
+        (username, job_id, label, len(results), payload),
+    )
+    _prune_grading_history(username)
+
+
+def update_grading_history_results(username: str, job_id: str, results: list) -> bool:
+    """Actualiza solo los resultados (p.ej. notas/comentarios editados) de una
+    entrada ya existente. No crea una nueva si no existía. Devuelve True si actualizó."""
+    init_db()
+    username = username.strip().lower()
+    payload = json.dumps(results, ensure_ascii=False)
+    rowcount = _execute(
+        f"UPDATE grading_history SET results = %s, student_count = %s, updated_at = {_NOW} "
+        f"WHERE username = %s AND job_id = %s",
+        (payload, len(results), username, job_id),
+        fetch="rowcount",
+    )
+    return bool(rowcount)
+
+
+def get_grading_history(username: str) -> list[dict]:
+    """Lista (metadatos, sin el contenido pesado) del historial del usuario, más reciente primero."""
+    init_db()
+    username = username.strip().lower()
+    rows = _execute(
+        "SELECT job_id, label, student_count, created_at, updated_at "
+        "FROM grading_history WHERE username = %s ORDER BY updated_at DESC, id DESC "
+        f"LIMIT {MAX_HISTORY_PER_USER}",
+        (username,),
+        fetch="all",
+    )
+    return rows or []
+
+
+def get_grading_history_item(username: str, job_id: str) -> dict | None:
+    """Snapshot completo (con resultados) de una entrada del historial del usuario."""
+    init_db()
+    username = username.strip().lower()
+    row = _execute(
+        "SELECT job_id, label, student_count, created_at, updated_at, results "
+        "FROM grading_history WHERE username = %s AND job_id = %s",
+        (username, job_id),
+        fetch="one",
+    )
+    if not row:
+        return None
+    try:
+        row["results"] = json.loads(row["results"])
+    except (ValueError, TypeError):
+        row["results"] = []
+    return row
 
 
 # ── Auditoría ────────────────────────────────────────────────────────────────
