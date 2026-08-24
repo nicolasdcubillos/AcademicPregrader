@@ -22,6 +22,7 @@ import configparser
 import csv as csv_module
 
 import auth
+import code_runner
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -723,6 +724,24 @@ def ask_ai():
     if answer is None:
         return jsonify({"error": "El LLM no pudo responder. Intenta de nuevo."}), 503
     return jsonify({"answer": answer})
+
+
+@app.route("/run_code", methods=["POST"])
+@auth.login_required
+def run_code_endpoint():
+    """Compila y ejecuta el código de una entrega (Python/C++/Java) y devuelve la consola."""
+    data = request.get_json(force=True) or {}
+    code = str(data.get("code", ""))[:200_000]
+    stdin_text = str(data.get("stdin", ""))[:20_000]
+    if not code.strip():
+        return jsonify({"ok": False, "error": "No hay código para ejecutar."}), 400
+
+    auth.log_event(session.get("user"), client_ip(), "run_code")
+    try:
+        result = code_runner.run_code(code, stdin_text)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error interno al ejecutar el código: {e}"}), 500
+    return jsonify(result)
 
 
 def build_job_config_dir(username: str) -> str:
