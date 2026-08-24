@@ -374,6 +374,20 @@
     .dl-btns { display: flex; gap: 7px; flex-shrink: 0; }
     .sort-bar, .filter-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .bar-label { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); margin-right: 2px; white-space: nowrap; }
+    .search-bar { position: relative; display: flex; align-items: center; max-width: 280px; width: 100%; }
+    .search-bar .search-icon { position: absolute; left: 11px; color: var(--text-3); pointer-events: none; }
+    .student-search-input {
+      width: 100%; background: var(--surface-2); border: 1px solid var(--border-bright);
+      border-radius: 99px; padding: 7px 30px; font-family: var(--font); font-size: .78rem;
+      color: var(--text); outline: none; transition: border-color .2s, box-shadow .2s;
+    }
+    .student-search-input:focus { border-color: var(--p1); box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+    .student-search-input::placeholder { color: var(--text-3); }
+    .search-clear-btn {
+      position: absolute; right: 8px; background: none; border: none; color: var(--text-3);
+      cursor: pointer; font-size: 10px; padding: 3px; line-height: 1;
+    }
+    .search-clear-btn:hover { color: var(--red); }
     .sort-btn { padding: 4px 11px; border-radius: 99px; font-size: .7rem; font-weight: 600; border: 1px solid var(--border-bright); background: var(--surface-2); color: var(--text-2); cursor: pointer; transition: all .18s; white-space: nowrap; font-family: var(--font); }
     .sort-btn:hover { border-color: var(--p1); color: var(--p3); }
     .sort-btn.active { background: rgba(99,102,241,.12); border-color: var(--p1); color: var(--p3); }
@@ -1065,11 +1079,17 @@
             </button>
           </div>
         </div>
+        <div class="search-bar">
+          <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="student-search-input" id="student-search-input" type="text" placeholder="Buscar estudiante..." autocomplete="off" oninput="onStudentSearchInput(this.value)" />
+          <button class="search-clear-btn hidden" id="search-clear-btn" onclick="clearStudentSearch()" title="Limpiar búsqueda">&#x2715;</button>
+        </div>
         <div class="sort-bar">
           <span class="bar-label">Ordenar</span>
-          <button class="sort-btn active" data-sort="desc"   onclick="sortResults('desc')">Nota ↓</button>
+          <button class="sort-btn active" data-sort="apellido" onclick="sortResults('apellido')">Apellido A→Z</button>
+          <button class="sort-btn"        data-sort="desc"   onclick="sortResults('desc')">Nota ↓</button>
           <button class="sort-btn"        data-sort="asc"    onclick="sortResults('asc')">Nota ↑</button>
-          <button class="sort-btn"        data-sort="az"     onclick="sortResults('az')">A → Z</button>
+          <button class="sort-btn"        data-sort="az"     onclick="sortResults('az')">Nombre A→Z</button>
           <button class="sort-btn"        data-sort="plagio" onclick="sortResults('plagio')">Plagio primero</button>
         </div>
         <div class="filter-bar">
@@ -1095,8 +1115,9 @@
     let liveResults       = [];
     let totalStudents     = 0;
     let completedStudents = 0;
-    let currentSort       = 'desc';
+    let currentSort       = 'apellido';
     let activeFilters     = new Set();
+    let studentSearchQuery = '';
     let logVisible        = false;
     let _previewCodes     = [];
     let _resultSeq        = 0;
@@ -1327,7 +1348,10 @@
       document.getElementById('live-prog-fill').style.width = '0%';
       document.getElementById('live-prog-text').textContent = 'Detectando estudiantes...';
       liveResults = []; totalStudents = 0; completedStudents = 0;
-      activeFilters = new Set(); currentSort = 'desc';
+      activeFilters = new Set(); currentSort = 'apellido'; studentSearchQuery = '';
+      const searchInput = document.getElementById('student-search-input');
+      if (searchInput) searchInput.value = '';
+      document.getElementById('search-clear-btn')?.classList.add('hidden');
 
       const rc = document.getElementById('results-card');
       rc.classList.add('hidden'); rc.classList.remove('fade-in');
@@ -1442,8 +1466,8 @@
     function showResultsCard() {
       if (liveResults.length === 0) return;
       document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-      document.querySelectorAll('.sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === 'desc'));
-      currentSort = 'desc'; activeFilters = new Set();
+      document.querySelectorAll('.sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === 'apellido'));
+      currentSort = 'apellido'; activeFilters = new Set();
       applyFiltersAndSort();
       const card = document.getElementById('results-card');
       card.classList.remove('hidden','fade-in'); void card.offsetWidth; card.classList.add('fade-in');
@@ -1462,15 +1486,44 @@
       applyFiltersAndSort();
     }
 
+    function normalizeForSearch(s) {
+      return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function lastNameKey(fullName) {
+      const parts = String(fullName || '').trim().split(/\s+/);
+      return parts[parts.length - 1] || '';
+    }
+
+    function onStudentSearchInput(value) {
+      studentSearchQuery = value.trim();
+      document.getElementById('search-clear-btn').classList.toggle('hidden', !studentSearchQuery);
+      applyFiltersAndSort();
+    }
+
+    function clearStudentSearch() {
+      studentSearchQuery = '';
+      const input = document.getElementById('student-search-input');
+      input.value = '';
+      document.getElementById('search-clear-btn').classList.add('hidden');
+      applyFiltersAndSort();
+      input.focus();
+    }
+
     function applyFiltersAndSort() {
       let results = [...liveResults];
       if (activeFilters.has('plagio'))    results = results.filter(r => r.plagio);
       if (activeFilters.has('nocompila')) results = results.filter(r => r.compila && r.compila !== 'SI' && r.compila !== 'N/A');
       if (activeFilters.has('baja'))      results = results.filter(r => parseFloat(r.nota) < 3);
-      if      (currentSort === 'desc')   results.sort((a,b) => parseFloat(b.nota||0) - parseFloat(a.nota||0));
-      else if (currentSort === 'asc')    results.sort((a,b) => parseFloat(a.nota||0) - parseFloat(b.nota||0));
-      else if (currentSort === 'az')     results.sort((a,b) => String(a.estudiante).localeCompare(String(b.estudiante)));
-      else if (currentSort === 'plagio') results.sort((a,b) => (b.plagio?1:0) - (a.plagio?1:0));
+      if (studentSearchQuery) {
+        const q = normalizeForSearch(studentSearchQuery);
+        results = results.filter(r => normalizeForSearch(r.estudiante).includes(q));
+      }
+      if      (currentSort === 'apellido') results.sort((a,b) => lastNameKey(a.estudiante).localeCompare(lastNameKey(b.estudiante), 'es', { sensitivity: 'base' }) || String(a.estudiante).localeCompare(String(b.estudiante), 'es'));
+      else if (currentSort === 'desc')     results.sort((a,b) => parseFloat(b.nota||0) - parseFloat(a.nota||0));
+      else if (currentSort === 'asc')      results.sort((a,b) => parseFloat(a.nota||0) - parseFloat(b.nota||0));
+      else if (currentSort === 'az')       results.sort((a,b) => String(a.estudiante).localeCompare(String(b.estudiante), 'es'));
+      else if (currentSort === 'plagio')   results.sort((a,b) => (b.plagio?1:0) - (a.plagio?1:0));
       renderCardsFromResults(results);
     }
 
