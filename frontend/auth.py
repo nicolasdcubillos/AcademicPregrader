@@ -16,6 +16,7 @@ import datetime
 import time
 from functools import wraps
 from pathlib import Path
+from typing import Optional
 
 from flask import session, redirect, url_for, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -268,7 +269,7 @@ def set_password(username: str, password: str, clear_must_change: bool = True) -
     ) > 0
 
 
-def reset_password(username: str) -> str | None:
+def reset_password(username: str) -> Optional[str]:
     """Asigna una clave temporal y fuerza el cambio en el próximo ingreso."""
     temp = generate_temp_password()
     if set_password(username, temp, clear_must_change=False):
@@ -300,7 +301,7 @@ def set_admin(username: str, is_admin: bool) -> bool:
     ) > 0
 
 
-def get_user(username: str) -> dict | None:
+def get_user(username: str) -> Optional[dict]:
     init_db()
     return _execute("SELECT * FROM users WHERE username = %s", (username.strip().lower(),), fetch="one")
 
@@ -341,7 +342,7 @@ _LAST_SEEN_WRITE: dict[str, float] = {}
 _LAST_SEEN_THROTTLE_SECONDS = 60
 
 
-def touch_last_seen(username: str | None) -> None:
+def touch_last_seen(username: Optional[str]) -> None:
     """Marca al usuario como visto ahora mismo (cualquier request autenticado cuenta
     como actividad), sin martillar la BD: como mucho una escritura por minuto/usuario."""
     if not username:
@@ -444,7 +445,7 @@ def get_grading_history(username: str) -> list[dict]:
     return rows or []
 
 
-def get_grading_history_item(username: str, job_id: str) -> dict | None:
+def get_grading_history_item(username: str, job_id: str) -> Optional[dict]:
     """Snapshot completo (con resultados) de una entrada del historial del usuario."""
     init_db()
     username = username.strip().lower()
@@ -465,7 +466,7 @@ def get_grading_history_item(username: str, job_id: str) -> dict | None:
 
 # ── Auditoría ────────────────────────────────────────────────────────────────
 
-def log_event(username, ip, event_type: str, detail: str | None = None) -> None:
+def log_event(username, ip, event_type: str, detail: Optional[str] = None) -> None:
     init_db()
     _execute(
         "INSERT INTO events (username, ip, event_type, detail) VALUES (%s, %s, %s, %s)",
@@ -473,7 +474,7 @@ def log_event(username, ip, event_type: str, detail: str | None = None) -> None:
     )
 
 
-def get_events(limit: int = 200, username: str | None = None) -> list[dict]:
+def get_events(limit: int = 200, username: Optional[str] = None) -> list[dict]:
     init_db()
     if username:
         return _execute(
@@ -607,7 +608,7 @@ def list_courses() -> list[dict]:
     return courses
 
 
-def get_course(course_id: int) -> dict | None:
+def get_course(course_id: int) -> Optional[dict]:
     init_db()
     return _execute("SELECT * FROM courses WHERE id = %s", (course_id,), fetch="one")
 
@@ -647,7 +648,7 @@ def assign_user_course(username: str, course_id) -> bool:
     return bool(rc)
 
 
-def get_user_active_course(username: str) -> dict | None:
+def get_user_active_course(username: str) -> Optional[dict]:
     """Devuelve el curso activo del usuario, o None."""
     user = get_user(username)
     if not user or not user.get("course_id"):
