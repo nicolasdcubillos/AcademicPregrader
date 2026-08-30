@@ -115,6 +115,9 @@
       position: fixed; z-index: 200; min-width: 190px; background: var(--surface); border: 1px solid var(--border-bright);
       border-radius: var(--r-sm); box-shadow: 0 12px 32px rgba(0,0,0,.4); padding: 6px; display: flex; flex-direction: column; gap: 1px;
     }
+    /* Sin esto, [hidden] pierde contra el display:flex de arriba y TODOS los menús
+       quedan visibles a la vez, apilados uno sobre otro dentro de cada fila. */
+    .row-menu-list[hidden] { display: none; }
     .row-menu-list button {
       display: flex; align-items: center; width: 100%; text-align: left; padding: 8px 10px; border-radius: 6px;
       border: 0; background: transparent; color: var(--text); font-family: var(--font); font-size: 12.5px; cursor: pointer;
@@ -349,7 +352,7 @@
           <div class="table-wrap">
             <table id="usersTable">
       <thead>
-        <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Curso activo</th><th>Último acceso (UTC-5)</th><th>Actividad</th><th>Acciones</th></tr>
+        <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Curso activo</th><th>Última actividad (UTC-5)</th><th>Actividad</th><th>Acciones</th></tr>
       </thead>
       <tbody></tbody>
             </table>
@@ -740,7 +743,7 @@
           <td data-label="Rol">${role}</td>
           <td data-label="Estado">${state}</td>
           <td data-label="Curso activo">${courseSel}</td>
-          <td data-label="Último acceso (UTC-5)">${formatDateTime(u.last_login)}</td>
+          <td data-label="Última actividad (UTC-5)">${formatDateTime(u.last_activity)}</td>
           <td data-label="Actividad"><div class="stat-trio">
             <span class="stat-chip" title="Accesos totales"><strong>${u.login_count}</strong><small>accesos</small></span>
             <span class="stat-chip" title="Entregas calificadas"><strong>${u.grade_count}</strong><small>calificó</small></span>

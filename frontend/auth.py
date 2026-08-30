@@ -477,6 +477,14 @@ def get_users_overview() -> list[dict]:
         "FROM events GROUP BY username, event_type",
         fetch="all",
     )
+    # Última actividad real (cualquier evento: login, calificar, descargar…), no solo el
+    # último login — una sesión puede seguir activa mucho después de haberse autenticado.
+    last_activity_rows = _execute(
+        "SELECT username, MAX(ts) AS last_activity FROM events "
+        "WHERE username IS NOT NULL AND username != '' GROUP BY username",
+        fetch="all",
+    )
+    activity_map = {r["username"]: r["last_activity"] for r in last_activity_rows}
     courses = {c["id"]: c["name"] for c in _execute("SELECT id, name FROM courses", fetch="all")}
     agg: dict[str, dict] = {}
     for s in stats:
@@ -489,6 +497,9 @@ def get_users_overview() -> list[dict]:
         u["grade_count"] = counts.get("grade_run", 0)
         u["download_count"] = counts.get("download_csv", 0) + counts.get("download_excel", 0)
         u["course_name"] = courses.get(u.get("course_id"))
+        last_login = u.get("last_login") or ""
+        last_event = activity_map.get(u["username"]) or ""
+        u["last_activity"] = max(last_login, last_event) or None
         result.append(u)
     return result
 
