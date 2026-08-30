@@ -19,6 +19,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Optional
 
 # Mismo marcador que usa backend/academic-pregrader.py al concatenar
 # múltiples archivos de una entrega: "// --- nombre.ext ---"
@@ -54,7 +55,7 @@ def _limit_resources():
         pass  # best-effort; en Windows o si falla, seguimos solo con el timeout
 
 
-def _truncate(s: str | None) -> str:
+def _truncate(s: Optional[str]) -> str:
     s = s or ""
     if len(s) > MAX_OUTPUT_CHARS:
         return s[:MAX_OUTPUT_CHARS] + "\n… [salida truncada]"
@@ -78,7 +79,7 @@ def parse_files(code: str) -> dict[str, str]:
     return files
 
 
-def detect_language(files: dict[str, str]) -> str | None:
+def detect_language(files: dict[str, str]) -> Optional[str]:
     for name in files:
         lang = LANG_BY_EXT.get(Path(name).suffix.lower())
         if lang:
@@ -117,7 +118,7 @@ def _result(lang, stage, rc, out, err, timed_out, started) -> dict:
     }
 
 
-def _pick_main_python_file(py_files: dict[str, str]) -> str | None:
+def _pick_main_python_file(py_files: dict[str, str]) -> Optional[str]:
     if not py_files:
         return None
     if len(py_files) == 1:
@@ -128,7 +129,7 @@ def _pick_main_python_file(py_files: dict[str, str]) -> str | None:
     return sorted(py_files)[0]
 
 
-def _pick_main_java_class(files: dict[str, str]) -> str | None:
+def _pick_main_java_class(files: dict[str, str]) -> Optional[str]:
     for name, content in files.items():
         if not name.lower().endswith(".java"):
             continue
@@ -232,7 +233,7 @@ def _run_java(files, tmp_dir, stdin_text, started) -> dict:
     return _result("java", "run", rc, out, err, timed_out, started)
 
 
-def run_code(code: str, stdin_text: str = "", language: str | None = None) -> dict:
+def run_code(code: str, stdin_text: str = "", language: Optional[str] = None) -> dict:
     """Compila (si aplica) y ejecuta el código dado. Devuelve un dict listo para jsonify()."""
     files = parse_files(code)
     lang = language or detect_language(files)
@@ -251,7 +252,7 @@ def run_code(code: str, stdin_text: str = "", language: str | None = None) -> di
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def prepare_interactive(code: str, language: str | None = None):
+def prepare_interactive(code: str, language: Optional[str] = None):
     """Prepara una ejecución *interactiva* (consola real, sin stdin precargado):
     escribe los archivos y compila si aplica, pero NO ejecuta el programa final —
     eso lo hace el llamador conectándolo a un pty para poder enviarle stdin

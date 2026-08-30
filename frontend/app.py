@@ -18,6 +18,7 @@ import unicodedata
 import uuid
 import webbrowser
 from pathlib import Path
+from typing import Optional
 
 try:
     import pty  # POSIX only (Linux/macOS) — no existe en Windows.
@@ -581,7 +582,7 @@ def _name_tokens(name: str) -> set:
     return {t for t in s.split() if len(t) > 1}
 
 
-def _match_roster(student_name: str, roster_tokens: list) -> dict | None:
+def _match_roster(student_name: str, roster_tokens: list) -> Optional[dict]:
     """Empareja el nombre calificado con una fila del roster por tokens de nombre."""
     g = _name_tokens(student_name)
     if not g:
@@ -772,7 +773,7 @@ def _provider_defaults(provider: str) -> tuple[str, str]:
     return "openai", "gpt-5-mini"
 
 
-def _effective_provider(cfg: configparser.RawConfigParser, requested: str) -> tuple[str, str | None]:
+def _effective_provider(cfg: configparser.RawConfigParser, requested: str) -> tuple[str, Optional[str]]:
     available = _available_providers(cfg)
     if requested in available:
         return requested, None
@@ -844,7 +845,7 @@ def _is_openai_reasoning_model(model: str) -> bool:
     return m.startswith(("gpt-5", "o1", "o3", "o4"))
 
 
-def _call_llm_question(provider: str, model: str, api_key: str, prompt: str) -> str | None:
+def _call_llm_question(provider: str, model: str, api_key: str, prompt: str) -> Optional[str]:
     if provider == "gemini":
         try:
             import google.generativeai as genai

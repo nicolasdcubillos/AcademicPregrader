@@ -13,6 +13,7 @@ import shutil
 import time
 import concurrent.futures
 from pathlib import Path
+from typing import Optional
 import pdfplumber
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -44,7 +45,7 @@ LANG_LABELS = {
 }
 
 
-def detect_language(carpeta: Path) -> str | None:
+def detect_language(carpeta: Path) -> Optional[str]:
     """Detecta el lenguaje de una entrega según los archivos presentes."""
     for lang in LANG_PRIORITY:
         exts = LANG_CONFIG[lang]["src_ext"]
@@ -304,7 +305,7 @@ def _check_java_version(verbose: bool = True) -> bool:
 
 
 def run_plagiarism_check(base_path: Path, jplag_jar: str, threshold: float,
-                         jplag_lang: str = "cpp") -> dict | None:
+                         jplag_lang: str = "cpp") -> Optional[dict]:
     """
     Ejecuta JPlag sobre base_path con el lenguaje indicado.
     Retorna dict {carpeta_name: {"con_quien": str, "porcentaje": float}}
