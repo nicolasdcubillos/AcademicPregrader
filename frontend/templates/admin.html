@@ -96,7 +96,7 @@
     .bar-col { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 6px; }
     .bar-col .bar { width: 100%; max-width: 34px; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg, var(--p2), var(--p1)); min-height: 3px; transition: height .25s ease; cursor: default; }
     .bar-col .bar-day { font-size: 10.5px; color: var(--text-3); text-transform: uppercase; }
-    table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
     th, td { text-align: left; padding: 11px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
     th { color: var(--text-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
     tr:last-child td { border-bottom: none; }
@@ -108,6 +108,14 @@
     .badge.blocked { background: rgba(248,113,113,.15); color: var(--red); }
     .badge.ok { background: rgba(16,185,129,.15); color: var(--badge-ok); }
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    /* Columna Acciones fija a la derecha: no requiere hacer scroll horizontal
+       para llegar al menú, aunque el resto de la tabla sí lo necesite. */
+    #usersTable th:last-child, #usersTable td:last-child,
+    #coursesTable th:last-child, #coursesTable td:last-child {
+      position: sticky; right: 0; background: var(--surface);
+      box-shadow: -8px 0 10px -8px rgba(0,0,0,.35);
+    }
+    #usersTable tbody tr:hover td:last-child, #coursesTable tbody tr:hover td:last-child { background: var(--surface-2); }
     /* Menú de acciones por fila (evita botones apilados que fuerzan scroll horizontal) */
     .row-menu { position: relative; display: inline-flex; }
     .menu-trigger { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
@@ -206,6 +214,9 @@
         padding: 9px 0; border-bottom: 1px dashed var(--border); width: 100%;
       }
       #usersTable td:last-child, #coursesTable td:last-child, #eventsTable td:last-child { border-bottom: none; }
+      #usersTable td:last-child, #coursesTable td:last-child {
+        position: static; box-shadow: none; background: transparent; width: 100%; align-items: flex-start;
+      }
       #usersTable td::before, #coursesTable td::before, #eventsTable td::before {
         content: attr(data-label); font-size: 10.5px; font-weight: 700; text-transform: uppercase;
         letter-spacing: .04em; color: var(--text-3);
