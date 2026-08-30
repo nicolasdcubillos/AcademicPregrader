@@ -29,6 +29,8 @@ from werkzeug.utils import secure_filename
 import configparser
 import csv as csv_module
 
+from pypdf import PdfWriter
+
 import auth
 import code_runner
 
@@ -264,23 +266,42 @@ def index():
 @app.route("/run", methods=["POST"])
 @auth.login_required
 def run_pregrader():
-    """Acepta ZIP + PDF como multipart/form-data y lanza la evaluación."""
+    """Acepta ZIP + uno o varios PDF como multipart/form-data y lanza la evaluación."""
     zip_file = request.files.get("zip_file")
-    pdf_file = request.files.get("pdf_file")
+    pdf_files = request.files.getlist("pdf_file") or request.files.getlist("pdf_files")
+    pdf_files = [f for f in pdf_files if f and f.filename]
 
     if not zip_file or not zip_file.filename:
         return jsonify({"error": "Debes seleccionar el archivo ZIP de entregas."}), 400
-    if not pdf_file or not pdf_file.filename:
+    if not pdf_files:
         return jsonify({"error": "El enunciado (PDF) es obligatorio."}), 400
 
     # Guardar los archivos subidos en un directorio temporal
     tmp_dir = tempfile.mkdtemp()
     zip_name = secure_filename(zip_file.filename) or "entregas.zip"
-    pdf_name = secure_filename(pdf_file.filename) or "enunciado.pdf"
     zip_path = os.path.join(tmp_dir, zip_name)
-    pdf_path = os.path.join(tmp_dir, pdf_name)
     zip_file.save(zip_path)
-    pdf_file.save(pdf_path)
+
+    pdf_paths = []
+    for index, pdf_file in enumerate(pdf_files, start=1):
+        original_name = secure_filename(pdf_file.filename) or f"enunciado_{index}.pdf"
+        safe_name = f"{index:02d}_{original_name}"
+        pdf_path = os.path.join(tmp_dir, safe_name)
+        pdf_file.save(pdf_path)
+        pdf_paths.append(pdf_path)
+
+    enunciado_path = pdf_paths[0]
+    if len(pdf_paths) > 1:
+        merged_pdf = os.path.join(tmp_dir, "enunciado-combinado.pdf")
+        writer = PdfWriter()
+        try:
+            for pdf_path in pdf_paths:
+                writer.append(pdf_path)
+            with open(merged_pdf, "wb") as fh:
+                writer.write(fh)
+        finally:
+            writer.close()
+        enunciado_path = merged_pdf
 
     extra_notes = (request.form.get("extra_notes") or "").strip()[:4000]
 
@@ -295,7 +316,7 @@ def run_pregrader():
     _queues[job_id] = q
 
     def worker():
-        cmd = [sys.executable, str(PREGRADER_SCRIPT), zip_path, pdf_path]
+        cmd = [sys.executable, str(PREGRADER_SCRIPT), zip_path, enunciado_path]
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["PREGRADER_CONFIG_DIR"] = job_cfg_dir

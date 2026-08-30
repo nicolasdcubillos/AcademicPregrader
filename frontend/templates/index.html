@@ -1040,7 +1040,7 @@
     <div class="card fade-in" style="animation-delay:.04s">
       <div class="upload-grid">
         <div class="upload-zone" id="drop-pdf" ondragover="onDragOver(event,'drop-pdf')" ondragleave="onDragLeave('drop-pdf')" ondrop="onDrop(event,'pdf')">
-          <input type="file" id="file-pdf" accept=".pdf" onchange="onFileSelect('pdf', this)">
+          <input type="file" id="file-pdf" accept=".pdf" multiple onchange="onFileSelect('pdf', this)">
           <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h6"/></svg></div>
           <div class="upload-type">Enunciado (PDF)</div>
           <div class="upload-hint">Arrastra o haz clic<br>Contexto del problema para el evaluador</div>
@@ -1398,21 +1398,40 @@
     }
 
     // ── File upload ──
-    const _files = { zip: null, pdf: null };
+    const _files = { zip: null, pdf: [] };
+
+    function formatPdfSelection(files) {
+      if (!files || !files.length) return '';
+      if (files.length === 1) return files[0].name;
+      return `${files.length} PDF seleccionados`;
+    }
+
+    function setSelectedPdfFiles(files) {
+      _files.pdf = Array.from(files || []).filter(file => file && file.name && file.name.toLowerCase().endsWith('.pdf'));
+      const zone = document.getElementById('drop-pdf');
+      const nameEl = document.getElementById('pdf-filename');
+      const label = formatPdfSelection(_files.pdf);
+      zone.classList.toggle('has-file', _files.pdf.length > 0);
+      nameEl.textContent = label;
+      updateRunButton();
+    }
 
     function onFileSelect(type, input) {
+      if (type === 'pdf') {
+        setSelectedPdfFiles(input.files);
+        return;
+      }
       const file = input.files[0]; if (!file) return;
       _files[type] = file;
-      const zoneId = type === 'zip' ? 'drop-zip' : 'drop-pdf';
-      const nameId = type === 'zip' ? 'zip-filename' : 'pdf-filename';
+      const zoneId = 'drop-zip';
       document.getElementById(zoneId).classList.add('has-file');
-      document.getElementById(nameId).textContent = file.name;
+      document.getElementById('zip-filename').textContent = file.name;
       updateRunButton();
     }
 
     function updateRunButton() {
       const btn = document.getElementById('btn-run');
-      const both = !!(_files.zip && _files.pdf);
+      const both = !!(_files.zip && _files.pdf.length > 0);
       btn.disabled = !both;
       btn.classList.toggle('ready', both);
     }
@@ -1423,12 +1442,18 @@
       e.preventDefault();
       const zoneId = type === 'zip' ? 'drop-zip' : 'drop-pdf';
       document.getElementById(zoneId).classList.remove('drag-over');
+      if (type === 'pdf') {
+        const files = Array.from(e.dataTransfer.files || []).filter(file => file && file.name && file.name.toLowerCase().endsWith('.pdf'));
+        if (!files.length) { flashZone(zoneId); return; }
+        setSelectedPdfFiles(files);
+        return;
+      }
       const file = e.dataTransfer.files[0]; if (!file) return;
       const ext = file.name.split('.').pop().toLowerCase();
       if (ext !== type) { flashZone(zoneId); return; }
       _files[type] = file;
       document.getElementById(zoneId).classList.add('has-file');
-      document.getElementById(type === 'zip' ? 'zip-filename' : 'pdf-filename').textContent = file.name;
+      document.getElementById('zip-filename').textContent = file.name;
       updateRunButton();
     }
     function flashZone(id) {
@@ -1456,7 +1481,7 @@
 
     async function runPregrader() {
       if (!_files.zip) { flashZone('drop-zip'); return; }
-      if (!_files.pdf) { flashZone('drop-pdf'); return; }
+      if (!_files.pdf.length) { flashZone('drop-pdf'); return; }
       await saveConfig();
 
       document.getElementById('log-output').innerHTML = '<span class="log-empty">Esperando salida...</span>';
@@ -1485,7 +1510,7 @@
 
       const fd = new FormData();
       fd.append('zip_file', _files.zip, _files.zip.name);
-      fd.append('pdf_file', _files.pdf, _files.pdf.name);
+      _files.pdf.forEach(file => fd.append('pdf_file', file, file.name));
       const extraNotes = (document.getElementById('extra-notes')?.value || '').trim();
       if (extraNotes) fd.append('extra_notes', extraNotes);
 
