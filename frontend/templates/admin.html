@@ -96,7 +96,7 @@
     .bar-col { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 6px; }
     .bar-col .bar { width: 100%; max-width: 34px; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg, var(--p2), var(--p1)); min-height: 3px; transition: height .25s ease; cursor: default; }
     .bar-col .bar-day { font-size: 10.5px; color: var(--text-3); text-transform: uppercase; }
-    table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
     th, td { text-align: left; padding: 11px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
     th { color: var(--text-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
     tr:last-child td { border-bottom: none; }
@@ -108,14 +108,6 @@
     .badge.blocked { background: rgba(248,113,113,.15); color: var(--red); }
     .badge.ok { background: rgba(16,185,129,.15); color: var(--badge-ok); }
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-    /* Columna Acciones fija a la derecha: no requiere hacer scroll horizontal
-       para llegar al menú, aunque el resto de la tabla sí lo necesite. */
-    #usersTable th:last-child, #usersTable td:last-child,
-    #coursesTable th:last-child, #coursesTable td:last-child {
-      position: sticky; right: 0; background: var(--surface);
-      box-shadow: -8px 0 10px -8px rgba(0,0,0,.35);
-    }
-    #usersTable tbody tr:hover td:last-child, #coursesTable tbody tr:hover td:last-child { background: var(--surface-2); }
     /* Menú de acciones por fila (evita botones apilados que fuerzan scroll horizontal) */
     .row-menu { position: relative; display: inline-flex; }
     .menu-trigger { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
@@ -214,9 +206,6 @@
         padding: 9px 0; border-bottom: 1px dashed var(--border); width: 100%;
       }
       #usersTable td:last-child, #coursesTable td:last-child, #eventsTable td:last-child { border-bottom: none; }
-      #usersTable td:last-child, #coursesTable td:last-child {
-        position: static; box-shadow: none; background: transparent; width: 100%; align-items: flex-start;
-      }
       #usersTable td::before, #coursesTable td::before, #eventsTable td::before {
         content: attr(data-label); font-size: 10.5px; font-weight: 700; text-transform: uppercase;
         letter-spacing: .04em; color: var(--text-3);
@@ -363,7 +352,7 @@
           <div class="table-wrap">
             <table id="usersTable">
       <thead>
-        <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Curso activo</th><th>Última actividad (UTC-5)</th><th>Actividad</th><th>Acciones</th></tr>
+        <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Curso activo</th><th>Última actividad</th><th>Actividad</th><th>Acciones</th></tr>
       </thead>
       <tbody></tbody>
             </table>
@@ -397,7 +386,7 @@
           <div class="table-wrap">
             <table id="coursesTable">
               <thead>
-                <tr><th>Curso</th><th>Estudiantes</th><th>Calificadores</th><th>Creado (UTC-5)</th><th>Acciones</th></tr>
+                <tr><th>Curso</th><th>Estudiantes</th><th>Calificadores</th><th>Creado</th><th>Acciones</th></tr>
               </thead>
               <tbody></tbody>
             </table>
@@ -419,7 +408,7 @@
           <div class="table-wrap">
             <table id="eventsTable">
       <thead>
-        <tr><th>Fecha (UTC-5)</th><th>Usuario</th><th>Evento</th><th>Detalle</th><th>IP</th></tr>
+        <tr><th>Fecha</th><th>Usuario</th><th>Evento</th><th>Detalle</th><th>IP</th></tr>
       </thead>
       <tbody></tbody>
             </table>
@@ -754,7 +743,7 @@
           <td data-label="Rol">${role}</td>
           <td data-label="Estado">${state}</td>
           <td data-label="Curso activo">${courseSel}</td>
-          <td data-label="Última actividad (UTC-5)">${formatDateTime(u.last_activity)}</td>
+          <td data-label="Última actividad">${formatDateTime(u.last_activity)}</td>
           <td data-label="Actividad"><div class="stat-trio">
             <span class="stat-chip" title="Accesos totales"><strong>${u.login_count}</strong><small>accesos</small></span>
             <span class="stat-chip" title="Entregas calificadas"><strong>${u.grade_count}</strong><small>calificó</small></span>
@@ -782,7 +771,7 @@
           <td data-label="Curso"><strong>${esc(c.name)}</strong></td>
           <td data-label="Estudiantes">${c.student_count}</td>
           <td data-label="Calificadores"><div class="actions">${graders}</div></td>
-          <td data-label="Creado (UTC-5)">${formatDateTime(c.created_at, "—")}</td>
+          <td data-label="Creado">${formatDateTime(c.created_at, "—")}</td>
           <td data-label="Acciones">${menu}</td>
         </tr>`;
       }).join("");
@@ -867,7 +856,7 @@
         const rowClass = e.event_type === "login_failed" || e.event_type === "login_blocked" ? "evt-fail"
           : e.event_type === "grade_run" ? "evt-grade" : "";
         return `<tr class="${rowClass}">
-        <td data-label="Fecha (UTC-5)">${formatDateTime(e.ts, "—")}</td>
+        <td data-label="Fecha">${formatDateTime(e.ts, "—")}</td>
         <td data-label="Usuario">${esc(e.username || "—")}</td>
         <td data-label="Evento" class="evt"><span class="evt-type">${esc(EVENT_LABELS[e.event_type] || e.event_type)}</span></td>
         <td data-label="Detalle" class="muted">${esc(e.detail || "")}</td>
