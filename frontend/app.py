@@ -900,7 +900,7 @@ def admin_save_config():
 def admin_overview():
     return jsonify({
         "users": auth.get_users_overview(),
-        "events": auth.get_events(limit=300),
+        "events": auth.get_events(limit=500),
         "courses": auth.list_courses(),
     })
 
