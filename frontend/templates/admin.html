@@ -83,15 +83,35 @@
     .stat .n { font-size: 26px; font-weight: 800; }
     .stat .l { font-size: 12px; color: var(--text-2); margin-top: 4px; }
     table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
-    th, td { text-align: left; padding: 11px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
-    th { color: var(--text-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    th, td { text-align: left; padding: 11px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { color: var(--text-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
     tr:last-child td { border-bottom: none; }
+    tbody tr { transition: background-color .12s ease; }
+    tbody tr:hover { background: var(--surface-2); }
     td .mono { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
     .badge.admin { background: rgba(99,102,241,.15); color: var(--badge-admin); }
     .badge.blocked { background: rgba(248,113,113,.15); color: var(--red); }
     .badge.ok { background: rgba(16,185,129,.15); color: var(--badge-ok); }
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    /* Sección Usuarios */
+    #usersTable { min-width: 900px; }
+    .user-cell { display: flex; align-items: center; gap: 10px; }
+    .avatar {
+      flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; font-family: var(--font);
+    }
+    .user-name-wrap { display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
+    .user-name-wrap .temp-pw { font-size: 10.5px; color: var(--yellow); font-weight: 600; }
+    .course-select { min-width: 160px; max-width: 190px; }
+    .last-login { display: flex; flex-direction: column; gap: 2px; }
+    .ll-rel { font-size: 12.5px; font-weight: 600; }
+    .ll-abs { font-size: 11px; color: var(--text-3); }
+    .stat-trio { display: flex; gap: 14px; }
+    .stat-chip { display: flex; flex-direction: column; align-items: center; min-width: 42px; }
+    .stat-chip strong { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat-chip small { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; margin-top: 1px; }
     .evt { font-family: var(--mono); font-size: 12px; }
     .evt-type { color: var(--p2); }
     input, select {
@@ -259,7 +279,7 @@
           <div class="table-wrap">
             <table id="usersTable">
       <thead>
-        <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Curso activo</th><th>Último acceso</th><th>Accesos</th><th>Calificó</th><th>Descargas</th><th>Acciones</th></tr>
+        <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Curso activo</th><th>Último acceso (UTC-5)</th><th>Actividad</th><th>Acciones</th></tr>
       </thead>
       <tbody></tbody>
             </table>
@@ -479,6 +499,54 @@
 
     function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
+    // ── Fecha/hora del último acceso: normaliza a UTC-5 (Bogotá) + "hace X" ──
+    function parseUtcTimestamp(raw) {
+      if (!raw) return null;
+      let s = String(raw).trim();
+      // Ya trae zona horaria (ISO con Z/offset o RFC de Postgres) -> Date la interpreta bien.
+      if (/[zZ]$|[+-]\d{2}:?\d{2}$|GMT$/.test(s)) {
+        const d = new Date(s);
+        return isNaN(d) ? null : d;
+      }
+      // "YYYY-MM-DD HH:MM:SS[.ffffff]" sin zona (SQLite/Postgres naive) -> es UTC.
+      const d = new Date(s.replace(" ", "T") + "Z");
+      return isNaN(d) ? null : d;
+    }
+
+    const BOGOTA_FMT = new Intl.DateTimeFormat("es-CO", {
+      timeZone: "America/Bogota", day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+
+    function relativeTimeEs(date) {
+      const diffSec = Math.round((Date.now() - date.getTime()) / 1000);
+      if (diffSec < 45) return "hace instantes";
+      const diffMin = Math.round(diffSec / 60);
+      if (diffMin < 60) return `hace ${diffMin} min`;
+      const diffH = Math.round(diffMin / 60);
+      if (diffH < 24) return `hace ${diffH} h`;
+      const diffD = Math.round(diffH / 24);
+      if (diffD < 30) return `hace ${diffD} d`;
+      const diffMonth = Math.round(diffD / 30);
+      if (diffMonth < 12) return `hace ${diffMonth} mes${diffMonth > 1 ? "es" : ""}`;
+      const diffY = Math.round(diffMonth / 12);
+      return `hace ${diffY} año${diffY > 1 ? "s" : ""}`;
+    }
+
+    function formatLastLogin(raw) {
+      const d = parseUtcTimestamp(raw);
+      if (!d) return '<div class="last-login"><span class="muted">nunca</span></div>';
+      const abs = BOGOTA_FMT.format(d).replace(",", "");
+      return `<div class="last-login"><span class="ll-rel" title="${abs} (UTC-5)">${relativeTimeEs(d)}</span><span class="ll-abs mono">${abs}</span></div>`;
+    }
+
+    const AVATAR_COLORS = ["#5a67d6", "#0e9f6e", "#c2410c", "#0891b2", "#a21caf", "#b45309", "#be123c", "#4338ca"];
+    function avatarColor(name) {
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+      return AVATAR_COLORS[h % AVATAR_COLORS.length];
+    }
+
     function renderUsers(users) {
       const tb = document.querySelector("#usersTable tbody");
       const courseOptions = (selected) => {
@@ -489,13 +557,20 @@
       tb.innerHTML = users.map(u => {
         const role = u.is_admin ? '<span class="badge admin">admin</span>' : '<span class="muted">usuario</span>';
         const state = u.is_blocked ? '<span class="badge blocked">bloqueado</span>' : '<span class="badge ok">activo</span>';
-        const last = u.last_login ? `<span class="mono">${esc(u.last_login)}</span>` : '<span class="muted">nunca</span>';
         const un = esc(u.username);
         const courseSel = `<select class="course-select" onchange="assignCourse('${un}', this.value)">${courseOptions(u.course_id)}</select>`;
         return `<tr>
-          <td><strong>${un}</strong>${u.must_change_password ? ' <span class="muted">(clave temporal)</span>' : ''}</td>
-          <td>${role}</td><td>${state}</td><td>${courseSel}</td><td>${last}</td>
-          <td>${u.login_count}</td><td>${u.grade_count}</td><td>${u.download_count}</td>
+          <td><div class="user-cell">
+            <span class="avatar" style="background:${avatarColor(un)}">${esc(un.charAt(0).toUpperCase())}</span>
+            <span class="user-name-wrap"><strong>${un}</strong>${u.must_change_password ? '<span class="temp-pw">clave temporal</span>' : ''}</span>
+          </div></td>
+          <td>${role}</td><td>${state}</td><td>${courseSel}</td>
+          <td>${formatLastLogin(u.last_login)}</td>
+          <td><div class="stat-trio">
+            <span class="stat-chip" title="Accesos totales"><strong>${u.login_count}</strong><small>accesos</small></span>
+            <span class="stat-chip" title="Entregas calificadas"><strong>${u.grade_count}</strong><small>calificó</small></span>
+            <span class="stat-chip" title="Descargas"><strong>${u.download_count}</strong><small>descargas</small></span>
+          </div></td>
           <td><div class="actions">
             <button class="btn btn-sm" onclick="resetPwd('${un}')">Reiniciar clave</button>
             <button class="btn btn-sm" onclick="toggleBlock('${un}', ${u.is_blocked ? 'false' : 'true'})">${u.is_blocked ? 'Desbloquear' : 'Bloquear'}</button>
