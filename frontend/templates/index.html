@@ -1040,7 +1040,7 @@
     <div class="card fade-in" style="animation-delay:.04s">
       <div class="upload-grid">
         <div class="upload-zone" id="drop-pdf" ondragover="onDragOver(event,'drop-pdf')" ondragleave="onDragLeave('drop-pdf')" ondrop="onDrop(event,'pdf')">
-          <input type="file" id="file-pdf" accept=".pdf" multiple onchange="onFileSelect('pdf', this)">
+          <input type="file" id="file-pdf" name="pdf_file" accept=".pdf" multiple onchange="onFileSelect('pdf', this)">
           <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h6"/></svg></div>
           <div class="upload-type">Enunciado (PDF)</div>
           <div class="upload-hint">Arrastra o haz clic<br>Contexto del problema para el evaluador</div>
@@ -1406,6 +1406,11 @@
       return `${files.length} PDF seleccionados`;
     }
 
+    function appendPregraderFiles(formData, files) {
+      formData.append('zip_file', files.zip, files.zip.name);
+      files.pdf.forEach(file => formData.append('pdf_file', file, file.name));
+    }
+
     function setSelectedPdfFiles(files) {
       _files.pdf = Array.from(files || []).filter(file => file && file.name && file.name.toLowerCase().endsWith('.pdf'));
       const zone = document.getElementById('drop-pdf');
@@ -1509,8 +1514,7 @@
       document.getElementById('progress-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
       const fd = new FormData();
-      fd.append('zip_file', _files.zip, _files.zip.name);
-      _files.pdf.forEach(file => fd.append('pdf_file', file, file.name));
+      appendPregraderFiles(fd, _files);
       const extraNotes = (document.getElementById('extra-notes')?.value || '').trim();
       if (extraNotes) fd.append('extra_notes', extraNotes);
 
