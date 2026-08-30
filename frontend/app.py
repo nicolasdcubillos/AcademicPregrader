@@ -8,13 +8,21 @@ import json
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unicodedata
+import uuid
 import webbrowser
 from pathlib import Path
+
+try:
+    import pty  # POSIX only (Linux/macOS) — no existe en Windows.
+except ImportError:
+    pty = None
 
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.utils import secure_filename
@@ -52,6 +60,103 @@ _results: dict[str, list] = {}
 # job_id → proceso activo
 _procs: dict[str, subprocess.Popen] = {}
 
+# run_id → sesión de consola interactiva del preview de código (ver InteractiveRun)
+_interactive_runs: dict[str, "InteractiveRun"] = {}
+
+
+class InteractiveRun:
+    """Una ejecución interactiva de código (preview), conectada a un pseudo-terminal
+    para que el programa se comporte como si corriera en una consola real: la salida
+    se transmite tal cual se produce y el evaluador puede escribir la entrada mientras
+    el programa sigue corriendo, sin tener que precargar el stdin de antemano."""
+
+    def __init__(self, run_id: str, language: str, cmd: list[str], tmp_dir: str):
+        self.run_id = run_id
+        self.language = language
+        self.tmp_dir = tmp_dir
+        self.queue: queue.Queue = queue.Queue()
+        self.done = False
+        self.exit_code = None
+        self.timed_out = False
+        self.started = time.time()
+        self._lock = threading.Lock()
+        self._finished_at = None
+
+        master_fd, slave_fd = pty.openpty()
+        self.master_fd = master_fd
+        try:
+            self.proc = subprocess.Popen(
+                cmd,
+                cwd=tmp_dir,
+                stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+                preexec_fn=code_runner._limit_resources if sys.platform != "win32" else None,
+                close_fds=True,
+                start_new_session=True,
+            )
+        finally:
+            os.close(slave_fd)
+
+        threading.Thread(target=self._pump_output, daemon=True).start()
+        threading.Thread(target=self._watchdog, daemon=True).start()
+
+    def _pump_output(self):
+        try:
+            while True:
+                try:
+                    chunk = os.read(self.master_fd, 4096)
+                except OSError:
+                    break  # EIO: el lado esclavo se cerró (el proceso terminó) — fin normal en pty.
+                if not chunk:
+                    break
+                text = chunk.decode("utf-8", errors="replace")
+                self.queue.put({"type": "output", "data": text})
+        finally:
+            self.proc.wait()
+            with self._lock:
+                self.exit_code = self.proc.returncode
+                self.done = True
+                self._finished_at = time.time()
+            try:
+                os.close(self.master_fd)
+            except OSError:
+                pass
+            self.queue.put({
+                "type": "done", "exit_code": self.exit_code, "timed_out": self.timed_out,
+                "duration_ms": int((time.time() - self.started) * 1000),
+            })
+            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _watchdog(self):
+        """Mata el proceso si se pasa del tope de tiempo (evita procesos colgados
+        para siempre esperando una entrada que nunca llega, o loops infinitos)."""
+        deadline = self.started + code_runner.INTERACTIVE_RUN_TIMEOUT_S
+        while time.time() < deadline:
+            if self.done:
+                return
+            time.sleep(1)
+        if not self.done:
+            self.timed_out = True
+            self.kill()
+
+    def write_input(self, text: str) -> bool:
+        with self._lock:
+            if self.done:
+                return False
+        try:
+            os.write(self.master_fd, (text + "\n").encode("utf-8", errors="replace"))
+            return True
+        except OSError:
+            return False
+
+    def kill(self):
+        try:
+            os.killpg(self.proc.pid, 9)  # SIGKILL al grupo completo (incluye hijos)
+        except Exception:
+            try:
+                self.proc.kill()
+            except Exception:
+                pass
+
 
 def client_ip() -> str:
     """IP real del cliente, respetando el proxy de Azure Container Apps."""
@@ -59,6 +164,14 @@ def client_ip() -> str:
     if fwd:
         return fwd.split(",")[0].strip()
     return request.remote_addr or "?"
+
+
+@app.before_request
+def _touch_activity():
+    """Cualquier request de un usuario ya autenticado cuenta como "actividad real",
+    no solo el login: así "último acceso" refleja el uso de la app, no solo cuándo
+    se autenticó por última vez (la sesión puede seguir viva por días sin re-login)."""
+    auth.touch_last_seen(session.get("user"))
 
 
 # ==============================
@@ -773,7 +886,9 @@ def ask_ai():
 @app.route("/run_code", methods=["POST"])
 @auth.login_required
 def run_code_endpoint():
-    """Compila y ejecuta el código de una entrega (Python/C++/Java) y devuelve la consola."""
+    """Compila y ejecuta el código de una entrega (Python/C++/Java) y devuelve la consola.
+    Modo "todo de una" (no interactivo); se mantiene por compatibilidad. El preview de
+    código en el frontend usa /run_code/start (consola interactiva de verdad)."""
     data = request.get_json(force=True) or {}
     code = str(data.get("code", ""))[:200_000]
     stdin_text = str(data.get("stdin", ""))[:20_000]
@@ -786,6 +901,89 @@ def run_code_endpoint():
     except Exception as e:
         return jsonify({"ok": False, "error": f"Error interno al ejecutar el código: {e}"}), 500
     return jsonify(result)
+
+
+@app.route("/run_code/start", methods=["POST"])
+@auth.login_required
+def run_code_start():
+    """Compila (si aplica) y arranca una consola interactiva real: la salida se
+    transmite según se produce y se puede enviar entrada mientras el programa corre,
+    en vez de precargar el stdin antes de ejecutar."""
+    if pty is None:
+        return jsonify({"ok": False, "error": "La consola interactiva no está disponible en este servidor (requiere Linux/macOS)."}), 501
+
+    data = request.get_json(force=True) or {}
+    code = str(data.get("code", ""))[:200_000]
+    if not code.strip():
+        return jsonify({"ok": False, "error": "No hay código para ejecutar."}), 400
+
+    auth.log_event(session.get("user"), client_ip(), "run_code")
+    try:
+        prep = code_runner.prepare_interactive(code)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error interno al preparar la ejecución: {e}"}), 500
+
+    if not prep.get("ok"):
+        shutil.rmtree(prep.pop("tmp_dir", ""), ignore_errors=True)
+        return jsonify(prep)
+
+    run_id = uuid.uuid4().hex
+    try:
+        run = InteractiveRun(run_id, prep["language"], prep["cmd"], prep["tmp_dir"])
+    except Exception as e:
+        shutil.rmtree(prep["tmp_dir"], ignore_errors=True)
+        return jsonify({"ok": False, "error": f"No se pudo iniciar el proceso: {e}"}), 500
+    _interactive_runs[run_id] = run
+    return jsonify({"ok": True, "run_id": run_id, "language": prep["language"]})
+
+
+@app.route("/run_code/stream/<run_id>")
+@auth.login_required
+def run_code_stream(run_id: str):
+    def generate():
+        run = _interactive_runs.get(run_id)
+        if run is None:
+            yield f"data: {json.dumps({'type': 'error', 'data': 'Sesión no encontrada.'})}\n\n"
+            return
+        while True:
+            try:
+                msg = run.queue.get(timeout=60)
+            except queue.Empty:
+                yield 'data: {"type":"keepalive"}\n\n'
+                continue
+            yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+            if msg.get("type") == "done":
+                _interactive_runs.pop(run_id, None)
+                break
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/run_code/input/<run_id>", methods=["POST"])
+@auth.login_required
+def run_code_input(run_id: str):
+    run = _interactive_runs.get(run_id)
+    if run is None:
+        return jsonify({"ok": False, "error": "Sesión no encontrada o ya terminada."}), 404
+    data = request.get_json(force=True) or {}
+    text = str(data.get("text", ""))[:4000]
+    if not run.write_input(text):
+        return jsonify({"ok": False, "error": "El programa ya terminó."}), 409
+    return jsonify({"ok": True})
+
+
+@app.route("/run_code/stop/<run_id>", methods=["POST"])
+@auth.login_required
+def run_code_stop(run_id: str):
+    run = _interactive_runs.get(run_id)
+    if run is None:
+        return jsonify({"ok": False, "error": "Sesión no encontrada o ya terminada."}), 404
+    run.kill()
+    return jsonify({"ok": True})
 
 
 def build_job_config_dir(username: str) -> str:

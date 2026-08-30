@@ -13,6 +13,7 @@ import secrets
 import string
 import json
 import datetime
+import time
 from functools import wraps
 from pathlib import Path
 
@@ -91,7 +92,8 @@ _DDL = {
                 must_change_password INTEGER NOT NULL DEFAULT 0,
                 course_id            INTEGER,
                 created_at           TEXT NOT NULL DEFAULT (datetime('now')),
-                last_login           TEXT
+                last_login           TEXT,
+                last_seen            TEXT
             )""",
         """CREATE TABLE IF NOT EXISTS courses (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,7 +141,8 @@ _DDL = {
                 must_change_password INTEGER NOT NULL DEFAULT 0,
                 course_id            INTEGER,
                 created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_login           TIMESTAMPTZ
+                last_login           TIMESTAMPTZ,
+                last_seen            TIMESTAMPTZ
             )""",
         """CREATE TABLE IF NOT EXISTS courses (
                 id         BIGSERIAL PRIMARY KEY,
@@ -198,6 +201,7 @@ def init_db() -> None:
                 ("is_blocked", "ALTER TABLE users ADD COLUMN is_blocked INTEGER NOT NULL DEFAULT 0"),
                 ("must_change_password", "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"),
                 ("last_login", "ALTER TABLE users ADD COLUMN last_login TEXT"),
+                ("last_seen", "ALTER TABLE users ADD COLUMN last_seen TEXT"),
                 ("course_id", "ALTER TABLE users ADD COLUMN course_id INTEGER"),
             ):
                 if col not in existing:
@@ -205,6 +209,7 @@ def init_db() -> None:
         else:
             # Migración PostgreSQL: agrega la columna si el despliegue es previo a cursos.
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_id INTEGER")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ")
         conn.commit()
         _DB_READY = True
     finally:
@@ -326,6 +331,30 @@ def record_login(username: str) -> None:
     _execute(
         f"UPDATE users SET last_login = {_NOW} WHERE username = %s",
         (username.strip().lower(),),
+    )
+
+
+# Última vez (epoch, en memoria) que se guardó last_seen por usuario, para no
+# escribir en la BD en cada request — con sesiones que no vuelven a autenticarse
+# (cookie persistente) el login queda viejo aunque la persona siga usando la app.
+_LAST_SEEN_WRITE: dict[str, float] = {}
+_LAST_SEEN_THROTTLE_SECONDS = 60
+
+
+def touch_last_seen(username: str | None) -> None:
+    """Marca al usuario como visto ahora mismo (cualquier request autenticado cuenta
+    como actividad), sin martillar la BD: como mucho una escritura por minuto/usuario."""
+    if not username:
+        return
+    username = username.strip().lower()
+    now = time.monotonic()
+    last_write = _LAST_SEEN_WRITE.get(username, 0.0)
+    if now - last_write < _LAST_SEEN_THROTTLE_SECONDS:
+        return
+    _LAST_SEEN_WRITE[username] = now
+    _execute(
+        f"UPDATE users SET last_seen = {_NOW} WHERE username = %s",
+        (username,),
     )
 
 
@@ -498,8 +527,9 @@ def get_users_overview() -> list[dict]:
         u["download_count"] = counts.get("download_csv", 0) + counts.get("download_excel", 0)
         u["course_name"] = courses.get(u.get("course_id"))
         last_login = u.get("last_login") or ""
+        last_seen = u.get("last_seen") or ""
         last_event = activity_map.get(u["username"]) or ""
-        u["last_activity"] = max(last_login, last_event) or None
+        u["last_activity"] = max(last_login, last_seen, last_event) or None
         result.append(u)
     return result
 
