@@ -76,12 +76,26 @@
     .section-heading p { color: var(--text-2); font-size: 13px; line-height: 1.5; margin-top: 5px; }
     .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; }
     .table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r); }
-    .table-wrap table { border: 0; border-radius: 0; min-width: 760px; }
+    .table-wrap table { border: 0; border-radius: 0; }
     @keyframes section-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
     .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 18px; }
     .stat .n { font-size: 26px; font-weight: 800; }
     .stat .l { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+    .subhead { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); margin: 26px 0 12px; }
+    .subhead:first-child { margin-top: 0; }
+    .insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .insight-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px; }
+    .insight-card .n { font-size: 20px; font-weight: 800; line-height: 1.2; }
+    .insight-card .n small { font-size: 12px; font-weight: 600; color: var(--text-2); }
+    .insight-card .l { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+    .chart-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 18px 20px; margin-bottom: 22px; }
+    .chart-panel h3 { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .chart-panel .muted-sub { font-size: 11.5px; color: var(--text-3); margin-bottom: 14px; }
+    .bar-chart { display: flex; align-items: flex-end; gap: 10px; height: 110px; }
+    .bar-col { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 6px; }
+    .bar-col .bar { width: 100%; max-width: 34px; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg, var(--p2), var(--p1)); min-height: 3px; transition: height .25s ease; cursor: default; }
+    .bar-col .bar-day { font-size: 10.5px; color: var(--text-3); text-transform: uppercase; }
     table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
     th, td { text-align: left; padding: 11px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
     th { color: var(--text-2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
@@ -94,8 +108,21 @@
     .badge.blocked { background: rgba(248,113,113,.15); color: var(--red); }
     .badge.ok { background: rgba(16,185,129,.15); color: var(--badge-ok); }
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    /* Menú de acciones por fila (evita botones apilados que fuerzan scroll horizontal) */
+    .row-menu { position: relative; display: inline-flex; }
+    .menu-trigger { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
+    .row-menu-list {
+      position: fixed; z-index: 200; min-width: 190px; background: var(--surface); border: 1px solid var(--border-bright);
+      border-radius: var(--r-sm); box-shadow: 0 12px 32px rgba(0,0,0,.4); padding: 6px; display: flex; flex-direction: column; gap: 1px;
+    }
+    .row-menu-list button {
+      display: flex; align-items: center; width: 100%; text-align: left; padding: 8px 10px; border-radius: 6px;
+      border: 0; background: transparent; color: var(--text); font-family: var(--font); font-size: 12.5px; cursor: pointer;
+    }
+    .row-menu-list button:hover { background: var(--surface-2); }
+    .row-menu-list button.danger { color: var(--red); }
+    .row-menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 5px 2px; }
     /* Sección Usuarios */
-    #usersTable { min-width: 900px; }
     .user-cell { display: flex; align-items: center; gap: 10px; }
     .avatar {
       flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; color: #fff;
@@ -104,16 +131,22 @@
     }
     .user-name-wrap { display: flex; flex-direction: column; gap: 1px; line-height: 1.25; }
     .user-name-wrap .temp-pw { font-size: 10.5px; color: var(--yellow); font-weight: 600; }
-    .course-select { min-width: 160px; max-width: 190px; }
-    .last-login { display: flex; flex-direction: column; gap: 2px; }
-    .ll-rel { font-size: 12.5px; font-weight: 600; }
-    .ll-abs { font-size: 11px; color: var(--text-3); }
+    .course-select { min-width: 150px; max-width: 180px; }
+    /* Celdas de fecha/hora reutilizadas en Usuarios, Cursos y Actividad */
+    .dt-cell { display: flex; flex-direction: column; gap: 2px; }
+    .dt-rel { font-size: 12.5px; font-weight: 600; }
+    .dt-abs { font-size: 11px; color: var(--text-3); }
     .stat-trio { display: flex; gap: 14px; }
     .stat-chip { display: flex; flex-direction: column; align-items: center; min-width: 42px; }
     .stat-chip strong { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
     .stat-chip small { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; margin-top: 1px; }
     .evt { font-family: var(--mono); font-size: 12px; }
     .evt-type { color: var(--p2); }
+    tr.evt-fail { background: rgba(248,113,113,.06); }
+    tr.evt-fail .evt-type { color: var(--red); }
+    tr.evt-grade .evt-type { color: var(--badge-ok); }
+    .table-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    .table-toolbar input[type="search"] { flex: 1 1 220px; max-width: 320px; }
     input, select {
       background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--r-sm);
       color: var(--text); font-family: var(--font); font-size: 13px; padding: 8px 10px; outline: none;
@@ -152,6 +185,30 @@
       .admin-nav button { min-width: 0; white-space: nowrap; }
       .panel { padding: 16px; }
       .create-row input[type="text"], .create-row input:not([type]) { flex: 1 1 180px; }
+    }
+    /* Tablas: en pantallas angostas se convierten en tarjetas apiladas para no
+       forzar scroll horizontal (patrón data-label + display:block por fila). */
+    @media (max-width: 880px) {
+      .table-wrap { overflow-x: visible; border: none; }
+      .table-wrap table { border: none; }
+      #usersTable, #coursesTable, #eventsTable { display: block; width: 100%; }
+      #usersTable thead, #coursesTable thead, #eventsTable thead { display: none; }
+      #usersTable tbody, #coursesTable tbody, #eventsTable tbody { display: block; }
+      #usersTable tr, #coursesTable tr, #eventsTable tr {
+        display: block; background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--r); margin-bottom: 12px; padding: 4px 14px;
+      }
+      #usersTable td, #coursesTable td, #eventsTable td {
+        display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+        padding: 9px 0; border-bottom: 1px dashed var(--border); width: 100%;
+      }
+      #usersTable td:last-child, #coursesTable td:last-child, #eventsTable td:last-child { border-bottom: none; }
+      #usersTable td::before, #coursesTable td::before, #eventsTable td::before {
+        content: attr(data-label); font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .04em; color: var(--text-3);
+      }
+      .insight-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+      .bar-chart { height: 90px; }
     }
   </style>
   <script>
@@ -206,9 +263,18 @@
         <section class="admin-section active" id="section-overview" aria-labelledby="heading-overview">
           <div class="section-heading">
             <h2 id="heading-overview">Resumen</h2>
-            <p>Estado general de usuarios, calificaciones y actividad de la plataforma.</p>
+            <p>Estado general de usuarios, calificaciones y actividad de la plataforma. Horarios en hora de Colombia (UTC-5).</p>
           </div>
           <div class="cards" id="stats"></div>
+
+          <div class="subhead">Insights</div>
+          <div class="insight-grid" id="insights"></div>
+
+          <div class="chart-panel">
+            <h3>Actividad de los últimos 7 días</h3>
+            <p class="muted-sub" id="chartSub">Eventos registrados por día (accesos, calificaciones, descargas…).</p>
+            <div class="bar-chart" id="activityChart"></div>
+          </div>
         </section>
 
         <section class="admin-section" id="section-config" aria-labelledby="heading-config" hidden>
@@ -276,6 +342,10 @@
       <button class="btn btn-primary" onclick="createUser()">Crear usuario</button>
       <span class="muted" style="font-size:12px;">Se genera una clave temporal; el usuario la cambia al ingresar.</span>
           </div>
+          <div class="table-toolbar">
+            <input type="search" id="userSearch" placeholder="Buscar por usuario…" oninput="renderUsers()" />
+            <span id="userSearchCount" class="muted" style="font-size:12px;"></span>
+          </div>
           <div class="table-wrap">
             <table id="usersTable">
       <thead>
@@ -313,7 +383,7 @@
           <div class="table-wrap">
             <table id="coursesTable">
               <thead>
-                <tr><th>Curso</th><th>Estudiantes</th><th>Calificadores</th><th>Creado</th><th>Acciones</th></tr>
+                <tr><th>Curso</th><th>Estudiantes</th><th>Calificadores</th><th>Creado (UTC-5)</th><th>Acciones</th></tr>
               </thead>
               <tbody></tbody>
             </table>
@@ -335,7 +405,7 @@
           <div class="table-wrap">
             <table id="eventsTable">
       <thead>
-        <tr><th>Fecha (UTC)</th><th>Usuario</th><th>Evento</th><th>Detalle</th><th>IP</th></tr>
+        <tr><th>Fecha (UTC-5)</th><th>Usuario</th><th>Evento</th><th>Detalle</th><th>IP</th></tr>
       </thead>
       <tbody></tbody>
             </table>
@@ -412,6 +482,7 @@
 
     let _courses = [];
     let _events = [];
+    let _allUsers = [];
     let _firstLoad = true;
 
     async function load() {
@@ -419,10 +490,13 @@
         const data = await api("/admin/api/overview");
         _courses = data.courses || [];
         _events = data.events || [];
+        _allUsers = data.users || [];
         renderStats(data);
+        renderInsights(data);
+        renderActivityChart(_events);
         renderCourses(_courses);
-        renderUsers(data.users);
-        populateEventFilter(data.users);
+        renderUsers();
+        populateEventFilter(_allUsers);
         renderEvents();
       } catch (e) {
         if (_firstLoad) toast("Error al cargar el panel: " + esc(e.message));
@@ -497,6 +571,63 @@
       el.innerHTML = cards.map(([l, n]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
     }
 
+    // ── Insights derivados de los datos existentes (sin nuevas consultas al backend) ──
+    function renderInsights(data) {
+      const users = data.users || [];
+      const courses = data.courses || [];
+      const events = data.events || [];
+      const el = document.getElementById("insights");
+      if (!el) return;
+
+      const now = Date.now();
+      const eventDates = events.map(e => ({ e, d: parseUtcTimestamp(e.ts) })).filter(x => x.d);
+      const within = (ms) => new Set(eventDates.filter(x => now - x.d.getTime() <= ms).map(x => x.e.username || "")).size;
+      const active24h = within(24 * 3600 * 1000);
+      const active7d  = within(7 * 24 * 3600 * 1000);
+
+      const newUsers30d = users.filter(u => {
+        const d = parseUtcTimestamp(u.created_at);
+        return d && (now - d.getTime()) <= 30 * 24 * 3600 * 1000;
+      }).length;
+
+      const topGrader = users.reduce((best, u) => (u.grade_count > (best?.grade_count || 0) ? u : best), null);
+      const topCourse = courses.reduce((best, c) => ((c.student_count || 0) > (best?.student_count || 0) ? c : best), null);
+      const blockedPct = users.length ? Math.round(users.filter(u => u.is_blocked).length / users.length * 100) : 0;
+
+      const cards = [
+        [`${active24h}`, "Usuarios activos (24 h)"],
+        [`${active7d}`, "Usuarios activos (7 días)"],
+        [`${newUsers30d}`, "Cuentas nuevas (30 días)"],
+        [topGrader && topGrader.grade_count ? `${esc(topGrader.username)} <small>(${topGrader.grade_count})</small>` : "—", "Calificador más activo"],
+        [topCourse && topCourse.student_count ? `${esc(topCourse.name)} <small>(${topCourse.student_count})</small>` : "—", "Curso más numeroso"],
+        [`${blockedPct}%`, "Usuarios bloqueados"],
+      ];
+      el.innerHTML = cards.map(([n, l]) => `<div class="insight-card"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("");
+    }
+
+    function renderActivityChart(events) {
+      const el = document.getElementById("activityChart");
+      if (!el) return;
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 24 * 3600 * 1000);
+        days.push({ key: BOGOTA_DAY_FMT.format(d), label: BOGOTA_WEEKDAY_FMT.format(d), count: 0 });
+      }
+      const byKey = Object.fromEntries(days.map(d => [d.key, d]));
+      events.forEach(e => {
+        const d = parseUtcTimestamp(e.ts);
+        if (!d) return;
+        const key = BOGOTA_DAY_FMT.format(d);
+        if (byKey[key]) byKey[key].count++;
+      });
+      const max = Math.max(1, ...days.map(d => d.count));
+      el.innerHTML = days.map(d => `
+        <div class="bar-col" title="${d.count} evento(s)">
+          <div class="bar" style="height:${Math.max(4, Math.round(d.count / max * 100))}%"></div>
+          <span class="bar-day">${d.label}</span>
+        </div>`).join("");
+    }
+
     function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
     // ── Fecha/hora del último acceso: normaliza a UTC-5 (Bogotá) + "hace X" ──
@@ -517,6 +648,8 @@
       timeZone: "America/Bogota", day: "2-digit", month: "2-digit", year: "numeric",
       hour: "2-digit", minute: "2-digit", hour12: false,
     });
+    const BOGOTA_DAY_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" });
+    const BOGOTA_WEEKDAY_FMT = new Intl.DateTimeFormat("es-CO", { timeZone: "America/Bogota", weekday: "short" });
 
     function relativeTimeEs(date) {
       const diffSec = Math.round((Date.now() - date.getTime()) / 1000);
@@ -533,11 +666,11 @@
       return `hace ${diffY} año${diffY > 1 ? "s" : ""}`;
     }
 
-    function formatLastLogin(raw) {
+    function formatDateTime(raw, emptyLabel = "nunca") {
       const d = parseUtcTimestamp(raw);
-      if (!d) return '<div class="last-login"><span class="muted">nunca</span></div>';
+      if (!d) return `<div class="dt-cell"><span class="muted">${emptyLabel}</span></div>`;
       const abs = BOGOTA_FMT.format(d).replace(",", "");
-      return `<div class="last-login"><span class="ll-rel" title="${abs} (UTC-5)">${relativeTimeEs(d)}</span><span class="ll-abs mono">${abs}</span></div>`;
+      return `<div class="dt-cell"><span class="dt-rel" title="${abs} (UTC-5)">${relativeTimeEs(d)}</span><span class="dt-abs mono">${abs}</span></div>`;
     }
 
     const AVATAR_COLORS = ["#5a67d6", "#0e9f6e", "#c2410c", "#0891b2", "#a21caf", "#b45309", "#be123c", "#4338ca"];
@@ -547,8 +680,42 @@
       return AVATAR_COLORS[h % AVATAR_COLORS.length];
     }
 
-    function renderUsers(users) {
+    // ── Menú de acciones por fila (kebab): evita botones apilados que forzaban scroll horizontal ──
+    const MENU_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>';
+    function rowMenu(id, label, itemsHtml) {
+      return `<div class="row-menu">
+        <button type="button" class="btn btn-sm menu-trigger" onclick="toggleRowMenu(event, '${id}')" aria-haspopup="true" aria-label="Acciones para ${label}">${MENU_ICON}</button>
+        <div class="row-menu-list" id="${id}" hidden>${itemsHtml}</div>
+      </div>`;
+    }
+    function closeAllRowMenus() { document.querySelectorAll(".row-menu-list").forEach(m => m.hidden = true); }
+    function toggleRowMenu(evt, id) {
+      evt.stopPropagation();
+      const menu = document.getElementById(id);
+      if (!menu) return;
+      const opening = menu.hidden;
+      closeAllRowMenus();
+      if (!opening) return;
+      const rect = evt.currentTarget.getBoundingClientRect();
+      menu.style.top = Math.min(rect.bottom + 4, window.innerHeight - 10) + "px";
+      menu.style.right = Math.max(window.innerWidth - rect.right, 8) + "px";
+      menu.hidden = false;
+    }
+    document.addEventListener("click", closeAllRowMenus);
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeAllRowMenus(); });
+    window.addEventListener("scroll", closeAllRowMenus, true);
+    window.addEventListener("resize", closeAllRowMenus);
+
+    function renderUsers() {
       const tb = document.querySelector("#usersTable tbody");
+      const q = (document.getElementById("userSearch")?.value || "").trim().toLowerCase();
+      const users = q ? _allUsers.filter(u => u.username.toLowerCase().includes(q)) : _allUsers;
+      const countEl = document.getElementById("userSearchCount");
+      if (countEl) countEl.textContent = q ? `${users.length} de ${_allUsers.length} usuario(s)` : `${_allUsers.length} usuario(s)`;
+      if (!users.length) {
+        tb.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center;padding:22px;">Ningún usuario coincide con la búsqueda.</td></tr>';
+        return;
+      }
       const courseOptions = (selected) => {
         const none = `<option value=""${!selected ? ' selected' : ''}>— sin curso —</option>`;
         const opts = _courses.map(c => `<option value="${c.id}"${c.id === selected ? ' selected' : ''}>${esc(c.name)}</option>`).join("");
@@ -559,24 +726,27 @@
         const state = u.is_blocked ? '<span class="badge blocked">bloqueado</span>' : '<span class="badge ok">activo</span>';
         const un = esc(u.username);
         const courseSel = `<select class="course-select" onchange="assignCourse('${un}', this.value)">${courseOptions(u.course_id)}</select>`;
+        const menu = rowMenu(`um-${un}`, un, `
+            <button onclick="resetPwd('${un}')">Reiniciar clave</button>
+            <button onclick="toggleBlock('${un}', ${u.is_blocked ? 'false' : 'true'})">${u.is_blocked ? 'Desbloquear' : 'Bloquear'}</button>
+            <button onclick="toggleAdmin('${un}', ${u.is_admin ? 'false' : 'true'})">${u.is_admin ? 'Quitar admin' : 'Hacer admin'}</button>
+            <hr />
+            <button class="danger" onclick="delUser('${un}')">Eliminar usuario</button>`);
         return `<tr>
-          <td><div class="user-cell">
+          <td data-label="Usuario"><div class="user-cell">
             <span class="avatar" style="background:${avatarColor(un)}">${esc(un.charAt(0).toUpperCase())}</span>
             <span class="user-name-wrap"><strong>${un}</strong>${u.must_change_password ? '<span class="temp-pw">clave temporal</span>' : ''}</span>
           </div></td>
-          <td>${role}</td><td>${state}</td><td>${courseSel}</td>
-          <td>${formatLastLogin(u.last_login)}</td>
-          <td><div class="stat-trio">
+          <td data-label="Rol">${role}</td>
+          <td data-label="Estado">${state}</td>
+          <td data-label="Curso activo">${courseSel}</td>
+          <td data-label="Último acceso (UTC-5)">${formatDateTime(u.last_login)}</td>
+          <td data-label="Actividad"><div class="stat-trio">
             <span class="stat-chip" title="Accesos totales"><strong>${u.login_count}</strong><small>accesos</small></span>
             <span class="stat-chip" title="Entregas calificadas"><strong>${u.grade_count}</strong><small>calificó</small></span>
             <span class="stat-chip" title="Descargas"><strong>${u.download_count}</strong><small>descargas</small></span>
           </div></td>
-          <td><div class="actions">
-            <button class="btn btn-sm" onclick="resetPwd('${un}')">Reiniciar clave</button>
-            <button class="btn btn-sm" onclick="toggleBlock('${un}', ${u.is_blocked ? 'false' : 'true'})">${u.is_blocked ? 'Desbloquear' : 'Bloquear'}</button>
-            <button class="btn btn-sm" onclick="toggleAdmin('${un}', ${u.is_admin ? 'false' : 'true'})">${u.is_admin ? 'Quitar admin' : 'Hacer admin'}</button>
-            <button class="btn btn-sm btn-danger" onclick="delUser('${un}')">Eliminar</button>
-          </div></td>
+          <td data-label="Acciones">${menu}</td>
         </tr>`;
       }).join("");
     }
@@ -591,14 +761,15 @@
         const graders = (c.graders && c.graders.length)
           ? c.graders.map(g => `<span class="badge admin">${esc(g)}</span>`).join(" ")
           : '<span class="muted">nadie asignado</span>';
+        const escName = esc(c.name).replace(/'/g, "\\'");
+        const menu = rowMenu(`cm-${c.id}`, esc(c.name), `
+            <button class="danger" onclick="deleteCourse(${c.id}, '${escName}')">Eliminar curso</button>`);
         return `<tr>
-          <td><strong>${esc(c.name)}</strong></td>
-          <td>${c.student_count}</td>
-          <td><div class="actions">${graders}</div></td>
-          <td class="mono">${esc(c.created_at || "")}</td>
-          <td><div class="actions">
-            <button class="btn btn-sm btn-danger" onclick="deleteCourse(${c.id}, '${esc(c.name).replace(/'/g, "\\'")}')">Eliminar</button>
-          </div></td>
+          <td data-label="Curso"><strong>${esc(c.name)}</strong></td>
+          <td data-label="Estudiantes">${c.student_count}</td>
+          <td data-label="Calificadores"><div class="actions">${graders}</div></td>
+          <td data-label="Creado (UTC-5)">${formatDateTime(c.created_at, "—")}</td>
+          <td data-label="Acciones">${menu}</td>
         </tr>`;
       }).join("");
     }
@@ -678,13 +849,17 @@
         tb.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:22px;">Sin eventos para este filtro.</td></tr>';
         return;
       }
-      tb.innerHTML = rows.map(e => `<tr>
-        <td class="mono">${esc(e.ts)}</td>
-        <td>${esc(e.username || "—")}</td>
-        <td class="evt"><span class="evt-type">${esc(EVENT_LABELS[e.event_type] || e.event_type)}</span></td>
-        <td class="muted">${esc(e.detail || "")}</td>
-        <td class="mono">${esc(e.ip || "")}</td>
-      </tr>`).join("");
+      tb.innerHTML = rows.map(e => {
+        const rowClass = e.event_type === "login_failed" || e.event_type === "login_blocked" ? "evt-fail"
+          : e.event_type === "grade_run" ? "evt-grade" : "";
+        return `<tr class="${rowClass}">
+        <td data-label="Fecha (UTC-5)">${formatDateTime(e.ts, "—")}</td>
+        <td data-label="Usuario">${esc(e.username || "—")}</td>
+        <td data-label="Evento" class="evt"><span class="evt-type">${esc(EVENT_LABELS[e.event_type] || e.event_type)}</span></td>
+        <td data-label="Detalle" class="muted">${esc(e.detail || "")}</td>
+        <td data-label="IP" class="mono">${esc(e.ip || "")}</td>
+      </tr>`;
+      }).join("");
     }
 
     async function createUser() {
