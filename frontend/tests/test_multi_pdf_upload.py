@@ -46,8 +46,21 @@ class MultiPdfUploadTests(unittest.TestCase):
 
         self.assertEqual(len(pdf_inputs), 1)
         self.assertEqual(pdf_inputs[0].get("name"), "pdf_file")
-        self.assertEqual(pdf_inputs[0].get("accept"), ".pdf")
-        self.assertIn("multiple", pdf_inputs[0])
+        self.assertEqual(pdf_inputs[0].get("accept"), "application/pdf,.pdf")
+        self.assertEqual(pdf_inputs[0].get("multiple"), "multiple")
+
+    def test_repeated_picker_selections_accumulate_pdf_files(self):
+        self.assertRegex(
+            self.template,
+            re.compile(
+                r"function onFileSelect\(type, input\).*?"
+                r"setSelectedPdfFiles\(input\.files, true\);.*?"
+                r"input\.value = '';",
+                re.DOTALL,
+            ),
+        )
+        self.assertIn("setSelectedPdfFiles(files, true);", self.template)
+        self.assertIn("const combined = append ? [..._files.pdf, ...selected] : selected;", self.template)
 
     def test_drag_and_drop_keeps_all_pdf_files(self):
         self.assertRegex(
@@ -55,7 +68,7 @@ class MultiPdfUploadTests(unittest.TestCase):
             re.compile(
                 r"function onDrop\(e, type\).*?"
                 r"Array\.from\(e\.dataTransfer\.files \|\| \[\]\).*?"
-                r"setSelectedPdfFiles\(files\)",
+                r"setSelectedPdfFiles\(files, true\)",
                 re.DOTALL,
             ),
         )
