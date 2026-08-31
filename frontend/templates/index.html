@@ -2084,7 +2084,7 @@
         const res = await fetch('/ask_ai', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, question }),
+          body: JSON.stringify({ code, question, job_id: currentJobId }),
         });
         const pl = await res.json();
         if (!res.ok || pl.error) {
