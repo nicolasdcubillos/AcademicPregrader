@@ -1040,12 +1040,12 @@
     <div class="card fade-in" style="animation-delay:.04s">
       <div class="upload-grid">
         <div class="upload-zone" id="drop-pdf" ondragover="onDragOver(event,'drop-pdf')" ondragleave="onDragLeave('drop-pdf')" ondrop="onDrop(event,'pdf')">
-          <input type="file" id="file-pdf" name="pdf_file" accept=".pdf" multiple onchange="onFileSelect('pdf', this)">
+          <input type="file" id="file-pdf" name="pdf_file" accept="application/pdf,.pdf" multiple="multiple" onchange="onFileSelect('pdf', this)">
           <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h6"/></svg></div>
           <div class="upload-type">Enunciado (PDF)</div>
-          <div class="upload-hint">Arrastra o haz clic<br>Contexto del problema para el evaluador</div>
+          <div class="upload-hint">Arrastra o haz clic<br>Usa ⌘ o Shift para elegir varios PDFs</div>
           <div class="upload-filename" id="pdf-filename"></div>
-          <div class="upload-change">Clic para cambiar</div>
+          <div class="upload-change">Clic para agregar más</div>
         </div>
         <div class="upload-zone" id="drop-zip" ondragover="onDragOver(event,'drop-zip')" ondragleave="onDragLeave('drop-zip')" ondrop="onDrop(event,'zip')">
           <input type="file" id="file-zip" accept=".zip" onchange="onFileSelect('zip', this)">
@@ -1411,8 +1411,16 @@
       files.pdf.forEach(file => formData.append('pdf_file', file, file.name));
     }
 
-    function setSelectedPdfFiles(files) {
-      _files.pdf = Array.from(files || []).filter(file => file && file.name && file.name.toLowerCase().endsWith('.pdf'));
+    function setSelectedPdfFiles(files, append = false) {
+      const selected = Array.from(files || []).filter(file => file && file.name && file.name.toLowerCase().endsWith('.pdf'));
+      const combined = append ? [..._files.pdf, ...selected] : selected;
+      _files.pdf = combined.filter((file, index, all) =>
+        all.findIndex(candidate =>
+          candidate.name === file.name &&
+          candidate.size === file.size &&
+          candidate.lastModified === file.lastModified
+        ) === index
+      );
       const zone = document.getElementById('drop-pdf');
       const nameEl = document.getElementById('pdf-filename');
       const label = formatPdfSelection(_files.pdf);
@@ -1423,7 +1431,8 @@
 
     function onFileSelect(type, input) {
       if (type === 'pdf') {
-        setSelectedPdfFiles(input.files);
+        setSelectedPdfFiles(input.files, true);
+        input.value = '';
         return;
       }
       const file = input.files[0]; if (!file) return;
@@ -1450,7 +1459,7 @@
       if (type === 'pdf') {
         const files = Array.from(e.dataTransfer.files || []).filter(file => file && file.name && file.name.toLowerCase().endsWith('.pdf'));
         if (!files.length) { flashZone(zoneId); return; }
-        setSelectedPdfFiles(files);
+        setSelectedPdfFiles(files, true);
         return;
       }
       const file = e.dataTransfer.files[0]; if (!file) return;
