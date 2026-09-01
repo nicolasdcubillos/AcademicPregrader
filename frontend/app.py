@@ -30,7 +30,7 @@ from werkzeug.utils import secure_filename
 import configparser
 import csv as csv_module
 
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 import auth
 import code_runner
@@ -62,6 +62,8 @@ _queues: dict[str, queue.Queue] = {}
 _results: dict[str, list] = {}
 # job_id → proceso activo
 _procs: dict[str, subprocess.Popen] = {}
+# job_id → (usuario, texto extraído del enunciado)
+_job_statements: dict[str, tuple[str, str]] = {}
 
 # run_id → sesión de consola interactiva del preview de código (ver InteractiveRun)
 _interactive_runs: dict[str, "InteractiveRun"] = {}
@@ -304,6 +306,13 @@ def run_pregrader():
             writer.close()
         enunciado_path = merged_pdf
 
+    statement_text = ""
+    try:
+        reader = PdfReader(enunciado_path)
+        statement_text = "\n\n".join(page.extract_text() or "" for page in reader.pages).strip()[:50000]
+    except Exception as exc:
+        print(f"[enunciado] No se pudo extraer texto para Ask AI: {exc}")
+
     extra_notes = (request.form.get("extra_notes") or "").strip()[:4000]
 
     username = session["user"]
@@ -315,6 +324,7 @@ def run_pregrader():
     job_id = os.urandom(8).hex()
     q: queue.Queue = queue.Queue()
     _queues[job_id] = q
+    _job_statements[job_id] = (username, statement_text)
 
     def worker():
         cmd = [sys.executable, str(PREGRADER_SCRIPT), zip_path, enunciado_path]
@@ -378,7 +388,9 @@ def run_pregrader():
         _results[job_id] = job_results
         if job_results:
             try:
-                auth.save_grading_history(username, job_id, zip_name, job_results)
+                auth.save_grading_history(
+                    username, job_id, zip_name, job_results, statement_text
+                )
             except Exception as exc:
                 print(f"[historial] No se pudo guardar el historial de {username}: {exc}")
         q.put({"type": "done", "job_id": job_id, "count": len(job_results)})
@@ -877,6 +889,7 @@ def ask_ai():
     data = request.get_json(force=True) or {}
     code     = str(data.get("code",     "")).strip()[:80000]
     question = str(data.get("question", "")).strip()[:2000]
+    job_id   = str(data.get("job_id",   "")).strip()
     if not question:
         return jsonify({"error": "Pregunta vacía."}), 400
 
@@ -893,10 +906,19 @@ def ask_ai():
     if not api_key:
         return jsonify({"error": "No hay API key configurada."}), 503
 
+    username = session["user"]
+    statement = ""
+    cached_statement = _job_statements.get(job_id)
+    if cached_statement and cached_statement[0] == username:
+        statement = cached_statement[1]
+    elif job_id:
+        statement = auth.get_grading_history_statement(username, job_id)[:50000]
+
+    statement_section = f"\nENUNCIADO DE LA ACTIVIDAD:\n{statement}\n" if statement else ""
     code_section = f"\nCÓDIGO DEL ESTUDIANTE:\n{code}\n" if code else ""
     prompt = ("Eres un asistente para un evaluador universitario que revisa entregas de código.\n"
               "Responde de forma concisa y directa. No des una calificación — solo responde la pregunta."
-              + code_section +
+              + statement_section + code_section +
               f"\nPREGUNTA DEL EVALUADOR:\n{question}")
 
     answer = _call_llm_question(provider, model, api_key, prompt)

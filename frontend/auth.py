@@ -128,6 +128,7 @@ _DDL = {
                 label         TEXT,
                 student_count INTEGER NOT NULL DEFAULT 0,
                 results       TEXT NOT NULL,
+                statement     TEXT NOT NULL DEFAULT '',
                 created_at    TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
                 UNIQUE(username, job_id)
@@ -177,6 +178,7 @@ _DDL = {
                 label         TEXT,
                 student_count INTEGER NOT NULL DEFAULT 0,
                 results       TEXT NOT NULL,
+                statement     TEXT NOT NULL DEFAULT '',
                 created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE(username, job_id)
@@ -207,10 +209,14 @@ def init_db() -> None:
             ):
                 if col not in existing:
                     cur.execute(ddl)
+            history_columns = {r["name"] for r in cur.execute("PRAGMA table_info(grading_history)")}
+            if "statement" not in history_columns:
+                cur.execute("ALTER TABLE grading_history ADD COLUMN statement TEXT NOT NULL DEFAULT ''")
         else:
             # Migración PostgreSQL: agrega la columna si el despliegue es previo a cursos.
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_id INTEGER")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ")
+            cur.execute("ALTER TABLE grading_history ADD COLUMN IF NOT EXISTS statement TEXT NOT NULL DEFAULT ''")
         conn.commit()
         _DB_READY = True
     finally:
@@ -400,18 +406,21 @@ def _prune_grading_history(username: str) -> None:
     )
 
 
-def save_grading_history(username: str, job_id: str, label: str, results: list) -> None:
+def save_grading_history(
+    username: str, job_id: str, label: str, results: list, statement: str = ""
+) -> None:
     """Crea o actualiza (upsert) el snapshot completo de una corrida de calificación."""
     init_db()
     username = username.strip().lower()
     payload = json.dumps(results, ensure_ascii=False)
     _execute(
-        f"INSERT INTO grading_history (username, job_id, label, student_count, results, created_at, updated_at) "
-        f"VALUES (%s, %s, %s, %s, %s, {_NOW}, {_NOW}) "
+        f"INSERT INTO grading_history "
+        f"(username, job_id, label, student_count, results, statement, created_at, updated_at) "
+        f"VALUES (%s, %s, %s, %s, %s, %s, {_NOW}, {_NOW}) "
         f"ON CONFLICT(username, job_id) DO UPDATE SET "
         f"label = excluded.label, student_count = excluded.student_count, "
-        f"results = excluded.results, updated_at = {_NOW}",
-        (username, job_id, label, len(results), payload),
+        f"results = excluded.results, statement = excluded.statement, updated_at = {_NOW}",
+        (username, job_id, label, len(results), payload, statement),
     )
     _prune_grading_history(username)
 
@@ -450,7 +459,7 @@ def get_grading_history_item(username: str, job_id: str) -> Optional[dict]:
     init_db()
     username = username.strip().lower()
     row = _execute(
-        "SELECT job_id, label, student_count, created_at, updated_at, results "
+        "SELECT job_id, label, student_count, created_at, updated_at, results, statement "
         "FROM grading_history WHERE username = %s AND job_id = %s",
         (username, job_id),
         fetch="one",
@@ -462,6 +471,17 @@ def get_grading_history_item(username: str, job_id: str) -> Optional[dict]:
     except (ValueError, TypeError):
         row["results"] = []
     return row
+
+
+def get_grading_history_statement(username: str, job_id: str) -> str:
+    """Devuelve el enunciado de una corrida, validando que pertenezca al usuario."""
+    init_db()
+    row = _execute(
+        "SELECT statement FROM grading_history WHERE username = %s AND job_id = %s",
+        (username.strip().lower(), job_id),
+        fetch="one",
+    )
+    return str(row.get("statement", "")) if row else ""
 
 
 # ── Auditoría ────────────────────────────────────────────────────────────────

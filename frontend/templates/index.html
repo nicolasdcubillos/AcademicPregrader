@@ -533,10 +533,11 @@
     .console-out {
       background: #05060a; border: 1px solid var(--border); border-bottom: none; border-radius: var(--r-sm) var(--r-sm) 0 0;
       padding: 12px 14px; max-height: 30vh; overflow: auto; margin: 0;
-      font-family: var(--mono); font-size: .74rem; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+      color: #e8eaf3; font-family: var(--mono); font-size: .74rem; line-height: 1.6;
+      white-space: pre-wrap; word-break: break-word;
     }
     .console-out .stderr-line { color: #f87171; }
-    .console-empty { color: var(--text-3); font-size: .72rem; }
+    .console-empty { color: #8f95aa; font-size: .72rem; }
     .console-input-row {
       display: flex; align-items: center; gap: 0; background: #05060a; border: 1px solid var(--border);
       border-radius: 0 0 var(--r-sm) var(--r-sm); padding: 2px 2px 2px 12px;
@@ -2084,7 +2085,7 @@
         const res = await fetch('/ask_ai', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, question }),
+          body: JSON.stringify({ code, question, job_id: currentJobId }),
         });
         const pl = await res.json();
         if (!res.ok || pl.error) {
