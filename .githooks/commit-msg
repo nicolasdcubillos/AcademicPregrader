@@ -1,0 +1,14 @@
+#!/bin/sh
+# Strips "Co-authored-by: ... Copilot ..." trailers so commits never get
+# attributed to the Copilot bot on GitHub. Any other Co-authored-by trailer
+# (real humans pairing on the change) is left untouched.
+#
+# Enable once per clone with:
+#   git config core.hooksPath .githooks
+
+msg_file="$1"
+tmp_file="${msg_file}.tmp"
+
+grep -viE '^co-authored-by:.*copilot' "$msg_file" > "$tmp_file" && mv "$tmp_file" "$msg_file"
+
+exit 0
