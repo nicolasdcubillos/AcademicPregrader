@@ -118,11 +118,12 @@
     /* Sin esto, [hidden] pierde contra el display:flex de arriba y TODOS los menús
        quedan visibles a la vez, apilados uno sobre otro dentro de cada fila. */
     .row-menu-list[hidden] { display: none; }
-    .row-menu-list button {
+    .row-menu-list button, .row-menu-list a {
       display: flex; align-items: center; width: 100%; text-align: left; padding: 8px 10px; border-radius: 6px;
       border: 0; background: transparent; color: var(--text); font-family: var(--font); font-size: 12.5px; cursor: pointer;
+      text-decoration: none; box-sizing: border-box;
     }
-    .row-menu-list button:hover { background: var(--surface-2); }
+    .row-menu-list button:hover, .row-menu-list a:hover { background: var(--surface-2); }
     .row-menu-list button.danger { color: var(--red); }
     .row-menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 5px 2px; }
     /* Sección Usuarios */
@@ -369,6 +370,12 @@
             <p class="muted" style="font-size:12px;margin-bottom:12px;">Pega directamente la lista de clase desde el Campus (columnas <em>Nombre</em>, <em>Username</em>, <em>Id de la organización</em>…). Las columnas deben venir separadas por tabuladores; la vista previa te muestra lo detectado antes de crear.</p>
             <div class="create-row">
               <input id="newCourseName" placeholder="Nombre del curso (ej. Programación 2 - G3)" autocomplete="off" style="flex:1 1 240px;" />
+              <select id="newCourseType" style="flex:0 1 260px;">
+                <option value="" selected disabled>Tipo de curso…</option>
+                <option value="ip">Introducción a la Programación</option>
+                <option value="pa">Programación Avanzada</option>
+                <option value="fpia">Fundamentos de Programación IA</option>
+              </select>
             </div>
             <textarea id="newCourseList" rows="6" placeholder="Pega aquí la lista de clase…" style="width:100%;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;outline:none;resize:vertical;"></textarea>
             <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -386,7 +393,7 @@
           <div class="table-wrap">
             <table id="coursesTable">
               <thead>
-                <tr><th>Curso</th><th>Estudiantes</th><th>Calificadores</th><th>Creado</th><th>Acciones</th></tr>
+                <tr><th>Curso</th><th>Tipo</th><th>Estudiantes</th><th>Calificadores</th><th>Creado</th><th>Acciones</th></tr>
               </thead>
               <tbody></tbody>
             </table>
@@ -467,7 +474,14 @@
       admin_reset_password: "Reinició clave", admin_set_role: "Cambió rol", admin_delete_user: "Eliminó usuario",
       admin_create_course: "Creó curso", admin_delete_course: "Eliminó curso",
       admin_update_course_students: "Actualizó roster", admin_assign_course: "Asignó curso",
+      admin_set_course_type: "Asignó tipo de curso", admin_download_course_excel: "Descargó Excel de curso",
       download_campus: "Descargó Campus", admin_clear_events: "Limpió actividad",
+    };
+
+    const COURSE_TYPE_LABELS = {
+      ip: "Introducción a la Programación",
+      pa: "Programación Avanzada",
+      fpia: "Fundamentos de Programación IA",
     };
 
     function toast(html, ms = 9000) {
@@ -757,18 +771,32 @@
     function renderCourses(courses) {
       const tb = document.querySelector("#coursesTable tbody");
       if (!courses.length) {
-        tb.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:22px;">Aún no hay cursos. Crea uno pegando la lista de clase.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="6" class="muted" style="text-align:center;padding:22px;">Aún no hay cursos. Crea uno pegando la lista de clase.</td></tr>';
         return;
       }
+      const typeOptions = (selected) => {
+        const opts = Object.entries(COURSE_TYPE_LABELS)
+          .map(([v, label]) => `<option value="${v}"${v === selected ? ' selected' : ''}>${esc(label)}</option>`)
+          .join("");
+        return `<option value=""${!selected ? ' selected disabled' : ''}>— asignar tipo —</option>` + opts;
+      };
       tb.innerHTML = courses.map(c => {
         const graders = (c.graders && c.graders.length)
           ? c.graders.map(g => `<span class="badge admin">${esc(g)}</span>`).join(" ")
           : '<span class="muted">nadie asignado</span>';
         const escName = esc(c.name).replace(/'/g, "\\'");
+        const typeCell = c.course_type
+          ? `<select class="course-select" onchange="assignCourseType(${c.id}, this.value)">${typeOptions(c.course_type)}</select>`
+          : `<select class="course-select" onchange="assignCourseType(${c.id}, this.value)">${typeOptions(null)}</select>`;
+        const excelBtn = c.course_type
+          ? `<a href="/admin/api/courses/${c.id}/excel" download>Descargar Excel</a>`
+          : `<span style="opacity:.5;cursor:not-allowed;" title="Asigna primero el tipo de curso para poder generar el Excel.">Descargar Excel</span>`;
         const menu = rowMenu(`cm-${c.id}`, esc(c.name), `
+            ${excelBtn}
             <button class="danger" onclick="deleteCourse(${c.id}, '${escName}')">Eliminar curso</button>`);
         return `<tr>
           <td data-label="Curso"><strong>${esc(c.name)}</strong></td>
+          <td data-label="Tipo">${typeCell}</td>
           <td data-label="Estudiantes">${c.student_count}</td>
           <td data-label="Calificadores"><div class="actions">${graders}</div></td>
           <td data-label="Creado">${formatDateTime(c.created_at, "—")}</td>
@@ -796,16 +824,29 @@
     async function createCourse() {
       const name = document.getElementById("newCourseName").value.trim();
       const class_list = document.getElementById("newCourseList").value;
+      const course_type = document.getElementById("newCourseType").value;
       if (!name) { toast("Escribe el nombre del curso."); return; }
+      if (!course_type) { toast("Selecciona el tipo de curso."); return; }
       try {
-        const r = await api("/admin/api/courses", { method: "POST", body: JSON.stringify({ name, class_list }) });
+        const r = await api("/admin/api/courses", { method: "POST", body: JSON.stringify({ name, class_list, course_type }) });
         document.getElementById("newCourseName").value = "";
         document.getElementById("newCourseList").value = "";
+        document.getElementById("newCourseType").value = "";
         document.getElementById("coursePreviewWrap").style.display = "none";
         document.getElementById("coursePreviewInfo").textContent = "";
         toast(`Curso <strong>${esc(name)}</strong> creado con ${r.count} estudiante(s).`);
         load();
       } catch (e) { toast("Error: " + esc(e.message)); }
+    }
+
+    async function assignCourseType(course_id, course_type) {
+      if (!course_type) return;
+      try {
+        await api(`/admin/api/courses/${course_id}/type`, {
+          method: "POST", body: JSON.stringify({ course_type })
+        });
+        load();
+      } catch (e) { toast("Error: " + esc(e.message)); load(); }
     }
 
     async function deleteCourse(id, name) {

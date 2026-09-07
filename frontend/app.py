@@ -25,7 +25,7 @@ try:
 except ImportError:
     pty = None
 
-from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.utils import secure_filename
 import configparser
 import csv as csv_module
@@ -34,6 +34,7 @@ from pypdf import PdfWriter
 
 import auth
 import code_runner
+import excel_export
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -1286,10 +1287,14 @@ def admin_create_course():
     name = str(data.get("name", "")).strip()
     if not name:
         return jsonify({"error": "El nombre del curso es obligatorio."}), 400
+    course_type = data.get("course_type")
+    course_type = str(course_type).strip() if course_type not in (None, "") else None
+    if course_type is not None and course_type not in auth.VALID_COURSE_TYPES:
+        return jsonify({"error": "Tipo de curso inválido. Usa ip, pa o fpia."}), 400
     students = parse_class_list(str(data.get("class_list", "")))
     if not students:
         return jsonify({"error": "No se detectaron estudiantes en la lista pegada."}), 400
-    course_id = auth.create_course(name, session.get("user"), students)
+    course_id = auth.create_course(name, session.get("user"), students, course_type=course_type)
     auth.log_event(session.get("user"), client_ip(), "admin_create_course",
                    detail=f"{name} ({len(students)} estudiantes)")
     return jsonify({"ok": True, "id": course_id, "count": len(students)})
@@ -1327,6 +1332,57 @@ def admin_update_course_students(course_id: int):
     auth.log_event(session.get("user"), client_ip(), "admin_update_course_students",
                    detail=f"{course_id} ({len(students)} estudiantes)")
     return jsonify({"ok": True, "count": len(students)})
+
+
+@app.route("/admin/api/courses/<int:course_id>/type", methods=["POST"])
+@auth.admin_required
+def admin_set_course_type(course_id: int):
+    course = auth.get_course(course_id)
+    if not course:
+        return jsonify({"error": "Curso no encontrado."}), 404
+    data = request.get_json(force=True) or {}
+    course_type = str(data.get("course_type", "")).strip()
+    if course_type not in auth.VALID_COURSE_TYPES:
+        return jsonify({"error": "Tipo de curso inválido. Usa ip, pa o fpia."}), 400
+    auth.set_course_type(course_id, course_type)
+    auth.log_event(session.get("user"), client_ip(), "admin_set_course_type",
+                   detail=f"{course['name']} ({course_type})")
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/api/courses/<int:course_id>/excel", methods=["GET"])
+@auth.admin_required
+def admin_download_course_excel(course_id: int):
+    course = auth.get_course(course_id)
+    if not course:
+        return jsonify({"ok": False, "error": "Curso no encontrado."}), 400
+    if not course.get("course_type"):
+        return jsonify({
+            "ok": False,
+            "error": "Este curso no tiene un tipo asignado. Asigna el tipo de curso (ip/pa/fpia) antes de generar el Excel.",
+        }), 400
+
+    students = auth.get_course_students(course_id)
+    try:
+        wb = excel_export.generate_course_workbook(course, students)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    import io
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    auth.log_event(session.get("user"), client_ip(), "admin_download_course_excel",
+                   detail=f"{course['name']} ({course['course_type']})")
+
+    filename = excel_export.suggest_filename(course["name"])
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 @app.route("/admin/api/users/<username>/course", methods=["POST"])
