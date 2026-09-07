@@ -49,6 +49,18 @@ class ExcelExportTests(unittest.TestCase):
         self.assertEqual(ws["M2"].value, "Nota")
         self.assertEqual(ws["V1"].value, "Definitiva")
 
+    def test_fpia_subtotal_denominators_are_not_empty(self):
+        # Regresión: L2/P2/T2 son los denominadores de M/Q/U (=5*(L{r}/$L$2), etc.).
+        # Si quedan vacíos, esas fórmulas producen #DIV/0! para todos los estudiantes.
+        wb = self._build("fpia", n=2)
+        ws = wb[gt.DEFINITIVAS_SHEET_NAME]
+        self.assertIsNotNone(ws["L2"].value)
+        self.assertIsNotNone(ws["P2"].value)
+        self.assertIsNotNone(ws["T2"].value)
+        self.assertEqual(ws["L2"].value, "=SUM(E2:K2)")
+        self.assertEqual(ws["P2"].value, "=SUM(N2:O2)")
+        self.assertEqual(ws["T2"].value, "=SUM(R2:S2)")
+
     def test_fpia_grades_are_zero_and_formulas_present(self):
         wb = self._build("fpia", n=2)
         ws = wb[gt.DEFINITIVAS_SHEET_NAME]

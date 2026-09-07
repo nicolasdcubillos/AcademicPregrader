@@ -1319,6 +1319,21 @@ def admin_delete_course(course_id: int):
     return jsonify({"ok": True})
 
 
+@app.route("/admin/api/courses/<int:course_id>/students", methods=["GET"])
+@auth.admin_required
+def admin_get_course_students(course_id: int):
+    """Solo lectura: lista los estudiantes ya registrados en el roster del curso."""
+    course = auth.get_course(course_id)
+    if not course:
+        return jsonify({"ok": False, "error": "Curso no encontrado."}), 404
+    students = auth.get_course_students(course_id)
+    return jsonify({
+        "ok": True,
+        "course": {"id": course["id"], "name": course["name"]},
+        "students": students,
+    })
+
+
 @app.route("/admin/api/courses/<int:course_id>/students", methods=["POST"])
 @auth.admin_required
 def admin_update_course_students(course_id: int):

@@ -165,6 +165,27 @@
     }
     .toast .mono { font-family: var(--mono); color: var(--accent-soft); word-break: break-all; }
     .muted { color: var(--text-3); }
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.55);
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-box {
+      background: var(--surface); border: 1px solid var(--border-bright); border-radius: var(--r);
+      box-shadow: 0 20px 60px rgba(0,0,0,.5); width: 100%; max-width: 560px; max-height: 82vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-box header {
+      position: static; backdrop-filter: none; background: transparent; border-bottom: 1px solid var(--border);
+      padding: 16px 20px; display: flex; align-items: center; gap: 10px;
+    }
+    .modal-box header h3 { font-size: 15px; font-weight: 700; flex: 1; }
+    .modal-box .modal-close {
+      border: 0; background: transparent; color: var(--text-2); cursor: pointer; font-size: 18px;
+      width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-box .modal-close:hover { background: var(--surface-2); color: var(--text); }
+    .modal-box .modal-body { padding: 8px 20px 20px; overflow-y: auto; }
     .loading-overlay {
       position: fixed; inset: 0; z-index: 100; background: var(--bg);
       display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
@@ -430,6 +451,24 @@
   </footer>
 
   <div class="toast" id="toast"></div>
+
+  <div class="modal-overlay" id="studentsModal" onclick="if (event.target === this) closeStudentsModal();">
+    <div class="modal-box">
+      <header>
+        <h3 id="studentsModalTitle">Estudiantes</h3>
+        <button type="button" class="modal-close" onclick="closeStudentsModal()" aria-label="Cerrar">&times;</button>
+      </header>
+      <div class="modal-body">
+        <p class="muted" style="font-size:12px;margin-bottom:10px;">Vista de solo lectura del roster registrado para este curso.</p>
+        <div class="table-wrap">
+          <table id="studentsModalTable">
+            <thead><tr><th>Nombre</th><th>ID organización</th><th>Username</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="loading-overlay" id="loadingOverlay">
     <div class="spinner"></div>
@@ -792,6 +831,7 @@
           ? `<a href="/admin/api/courses/${c.id}/excel" download>Descargar Excel</a>`
           : `<span style="opacity:.5;cursor:not-allowed;" title="Asigna primero el tipo de curso para poder generar el Excel.">Descargar Excel</span>`;
         const menu = rowMenu(`cm-${c.id}`, esc(c.name), `
+            <button onclick="viewCourseStudents(${c.id}, '${escName}')">Ver estudiantes</button>
             ${excelBtn}
             <button class="danger" onclick="deleteCourse(${c.id}, '${escName}')">Eliminar curso</button>`);
         return `<tr>
@@ -854,6 +894,36 @@
       try { await api(`/admin/api/courses/${id}`, { method: "DELETE" }); load(); }
       catch (e) { toast("Error: " + esc(e.message)); }
     }
+
+    async function viewCourseStudents(id, name) {
+      closeAllRowMenus();
+      const modal = document.getElementById("studentsModal");
+      const tb = document.querySelector("#studentsModalTable tbody");
+      document.getElementById("studentsModalTitle").textContent = `Estudiantes · ${name}`;
+      tb.innerHTML = '<tr><td colspan="3" class="muted" style="text-align:center;padding:16px;">Cargando…</td></tr>';
+      modal.classList.add("show");
+      try {
+        const r = await api(`/admin/api/courses/${id}/students`);
+        const students = r.students || [];
+        tb.innerHTML = students.length
+          ? students.map(s => `<tr>
+              <td>${esc(s.full_name || "")}</td>
+              <td class="mono">${esc(s.org_id || "")}</td>
+              <td class="mono">${esc(s.campus_username || "")}</td>
+            </tr>`).join("")
+          : '<tr><td colspan="3" class="muted" style="text-align:center;padding:16px;">Este curso no tiene estudiantes registrados.</td></tr>';
+      } catch (e) {
+        tb.innerHTML = `<tr><td colspan="3" class="muted" style="text-align:center;padding:16px;">Error: ${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    function closeStudentsModal() {
+      document.getElementById("studentsModal").classList.remove("show");
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeStudentsModal();
+    });
 
     async function assignCourse(username, course_id) {
       try {
