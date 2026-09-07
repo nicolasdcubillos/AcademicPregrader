@@ -97,10 +97,11 @@ _DDL = {
                 last_seen            TEXT
             )""",
         """CREATE TABLE IF NOT EXISTS courses (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                name       TEXT NOT NULL,
-                created_by TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT NOT NULL,
+                created_by  TEXT,
+                course_type TEXT,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now'))
             )""",
         """CREATE TABLE IF NOT EXISTS course_students (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,10 +148,11 @@ _DDL = {
                 last_seen            TIMESTAMPTZ
             )""",
         """CREATE TABLE IF NOT EXISTS courses (
-                id         BIGSERIAL PRIMARY KEY,
-                name       TEXT NOT NULL,
-                created_by TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                id          BIGSERIAL PRIMARY KEY,
+                name        TEXT NOT NULL,
+                created_by  TEXT,
+                course_type TEXT,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )""",
         """CREATE TABLE IF NOT EXISTS course_students (
                 id              BIGSERIAL PRIMARY KEY,
@@ -209,6 +211,9 @@ def init_db() -> None:
             ):
                 if col not in existing:
                     cur.execute(ddl)
+            existing_courses = {r["name"] for r in cur.execute("PRAGMA table_info(courses)")}
+            if "course_type" not in existing_courses:
+                cur.execute("ALTER TABLE courses ADD COLUMN course_type TEXT")
             history_columns = {r["name"] for r in cur.execute("PRAGMA table_info(grading_history)")}
             if "statement" not in history_columns:
                 cur.execute("ALTER TABLE grading_history ADD COLUMN statement TEXT NOT NULL DEFAULT ''")
@@ -216,6 +221,7 @@ def init_db() -> None:
             # Migración PostgreSQL: agrega la columna si el despliegue es previo a cursos.
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS course_id INTEGER")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ")
+            cur.execute("ALTER TABLE courses ADD COLUMN IF NOT EXISTS course_type TEXT")
             cur.execute("ALTER TABLE grading_history ADD COLUMN IF NOT EXISTS statement TEXT NOT NULL DEFAULT ''")
         conn.commit()
         _DB_READY = True
@@ -557,23 +563,48 @@ def get_users_overview() -> list[dict]:
 
 # ── Cursos / clases ──────────────────────────────────────────────────────────
 
-def create_course(name: str, created_by: str, students: list[dict]) -> int:
+VALID_COURSE_TYPES = {"ip", "pa", "fpia"}
+
+
+def create_course(name: str, created_by: str, students: list[dict], course_type: Optional[str] = None) -> int:
     """Crea un curso con su roster (lista de {name, username, org_id}). Devuelve el id."""
+    if course_type is not None and course_type not in VALID_COURSE_TYPES:
+        raise ValueError(f"Tipo de curso inválido: {course_type!r}")
     init_db()
     conn = _connect()
     try:
         cur = conn.cursor()
         if _BACKEND == "postgres":
-            cur.execute("INSERT INTO courses (name, created_by) VALUES (%s, %s) RETURNING id", (name, created_by))
+            cur.execute(
+                "INSERT INTO courses (name, created_by, course_type) VALUES (%s, %s, %s) RETURNING id",
+                (name, created_by, course_type),
+            )
             course_id = cur.fetchone()["id"]
         else:
-            cur.execute("INSERT INTO courses (name, created_by) VALUES (?, ?)", (name, created_by))
+            cur.execute(
+                "INSERT INTO courses (name, created_by, course_type) VALUES (?, ?, ?)",
+                (name, created_by, course_type),
+            )
             course_id = cur.lastrowid
         _insert_students(cur, course_id, students)
         conn.commit()
         return course_id
     finally:
         conn.close()
+
+
+def set_course_type(course_id: int, course_type: str) -> bool:
+    """Asigna/corrige el tipo de un curso ya existente."""
+    if course_type not in VALID_COURSE_TYPES:
+        raise ValueError(f"Tipo de curso inválido: {course_type!r}")
+    init_db()
+    rc = _execute(
+        "UPDATE courses SET course_type = %s WHERE id = %s",
+        (course_type, course_id),
+        fetch="rowcount",
+    )
+    return bool(rc)
+
 
 
 def _insert_students(cur, course_id: int, students: list[dict]) -> None:
