@@ -271,11 +271,12 @@ def run_pregrader():
     zip_file = request.files.get("zip_file")
     pdf_files = request.files.getlist("pdf_file") or request.files.getlist("pdf_files")
     pdf_files = [f for f in pdf_files if f and f.filename]
+    enunciado_text = (request.form.get("enunciado_text") or "").strip()
 
     if not zip_file or not zip_file.filename:
         return jsonify({"error": "Debes seleccionar el archivo ZIP de entregas."}), 400
-    if not pdf_files:
-        return jsonify({"error": "El enunciado (PDF) es obligatorio."}), 400
+    if not pdf_files and not enunciado_text:
+        return jsonify({"error": "El enunciado es obligatorio (sube un PDF o escribe el texto)."}), 400
 
     # Guardar los archivos subidos en un directorio temporal
     tmp_dir = tempfile.mkdtemp()
@@ -283,26 +284,32 @@ def run_pregrader():
     zip_path = os.path.join(tmp_dir, zip_name)
     zip_file.save(zip_path)
 
-    pdf_paths = []
-    for index, pdf_file in enumerate(pdf_files, start=1):
-        original_name = secure_filename(pdf_file.filename) or f"enunciado_{index}.pdf"
-        safe_name = f"{index:02d}_{original_name}"
-        pdf_path = os.path.join(tmp_dir, safe_name)
-        pdf_file.save(pdf_path)
-        pdf_paths.append(pdf_path)
+    if enunciado_text:
+        # El enunciado se escribió a mano en lugar de subir un PDF.
+        enunciado_path = os.path.join(tmp_dir, "enunciado.txt")
+        with open(enunciado_path, "w", encoding="utf-8") as fh:
+            fh.write(enunciado_text[:20000])
+    else:
+        pdf_paths = []
+        for index, pdf_file in enumerate(pdf_files, start=1):
+            original_name = secure_filename(pdf_file.filename) or f"enunciado_{index}.pdf"
+            safe_name = f"{index:02d}_{original_name}"
+            pdf_path = os.path.join(tmp_dir, safe_name)
+            pdf_file.save(pdf_path)
+            pdf_paths.append(pdf_path)
 
-    enunciado_path = pdf_paths[0]
-    if len(pdf_paths) > 1:
-        merged_pdf = os.path.join(tmp_dir, "enunciado-combinado.pdf")
-        writer = PdfWriter()
-        try:
-            for pdf_path in pdf_paths:
-                writer.append(pdf_path)
-            with open(merged_pdf, "wb") as fh:
-                writer.write(fh)
-        finally:
-            writer.close()
-        enunciado_path = merged_pdf
+        enunciado_path = pdf_paths[0]
+        if len(pdf_paths) > 1:
+            merged_pdf = os.path.join(tmp_dir, "enunciado-combinado.pdf")
+            writer = PdfWriter()
+            try:
+                for pdf_path in pdf_paths:
+                    writer.append(pdf_path)
+                with open(merged_pdf, "wb") as fh:
+                    writer.write(fh)
+            finally:
+                writer.close()
+            enunciado_path = merged_pdf
 
     extra_notes = (request.form.get("extra_notes") or "").strip()[:4000]
 

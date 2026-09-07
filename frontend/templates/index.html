@@ -266,6 +266,33 @@
     .upload-change { font-size: .64rem; color: var(--text-3); display: none; }
     .upload-zone.has-file .upload-change { display: block; }
 
+    /* ── Enunciado: PDF vs texto ── */
+    .enunciado-cell { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .enunciado-modes {
+      display: inline-flex; gap: 2px; align-self: flex-start; background: var(--surface-2);
+      border: 1px solid var(--border-bright); border-radius: 99px; padding: 2px;
+    }
+    .enunciado-mode-btn {
+      border: none; background: transparent; font-size: .66rem; font-weight: 600;
+      color: var(--text-3); padding: 4px 11px; border-radius: 99px; cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .enunciado-mode-btn.active { background: var(--p1); color: #fff; }
+    .enunciado-cell .upload-zone { flex: 1; }
+    .upload-zone--text { cursor: text; padding: 14px; justify-content: flex-start; }
+    .enunciado-textarea {
+      width: 100%; height: 100%; min-height: 108px; resize: vertical; border: none;
+      background: transparent; outline: none; font-size: .78rem; line-height: 1.5;
+      color: var(--text); font-family: inherit;
+    }
+    .enunciado-textarea::placeholder { color: var(--text-3); }
+    .upload-zone--text:hover, .upload-zone--text:focus-within {
+      border-color: var(--p1); background: rgba(99,102,241,.05);
+      box-shadow: 0 0 0 3px rgba(99,102,241,.09);
+    }
+    .upload-zone--text.has-content { border-color: var(--green); border-style: solid; background: rgba(16,185,129,.04); }
+    .upload-zone--text.error-flash { border-color: var(--red); background: var(--red-dim); animation: shake .3s ease; }
+
     /* ── Run button ── */
     .btn-run {
       width: 100%; margin-top: 24px; padding: 15px;
@@ -1033,19 +1060,28 @@
     <!-- Hero -->
     <div class="hero fade-in">
       <h1>Pre-calificación de<br>entregas académicas</h1>
-      <p class="hero-sub">Sube el ZIP del Campus Virtual y el enunciado en PDF. La herramienta compila el código, revisa posibles coincidencias de plagio y propone una calificación fundamentada para cada entrega como apoyo a tu evaluación.</p>
+      <p class="hero-sub">Sube el ZIP del Campus Virtual y el enunciado (en PDF o escribiéndolo directamente). La herramienta compila el código, revisa posibles coincidencias de plagio y propone una calificación fundamentada para cada entrega como apoyo a tu evaluación.</p>
     </div>
 
     <!-- Upload card -->
     <div class="card fade-in" style="animation-delay:.04s">
       <div class="upload-grid">
-        <div class="upload-zone" id="drop-pdf" ondragover="onDragOver(event,'drop-pdf')" ondragleave="onDragLeave('drop-pdf')" ondrop="onDrop(event,'pdf')">
-          <input type="file" id="file-pdf" name="pdf_file" accept="application/pdf,.pdf" multiple="multiple" onchange="onFileSelect('pdf', this)">
-          <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h6"/></svg></div>
-          <div class="upload-type">Enunciado (PDF)</div>
-          <div class="upload-hint">Arrastra o haz clic<br>Usa ⌘ o Shift para elegir varios PDFs</div>
-          <div class="upload-filename" id="pdf-filename"></div>
-          <div class="upload-change">Clic para agregar más</div>
+        <div class="enunciado-cell">
+          <div class="enunciado-modes">
+            <button type="button" class="enunciado-mode-btn active" id="mode-btn-pdf" onclick="setEnunciadoMode('pdf')">Subir PDF</button>
+            <button type="button" class="enunciado-mode-btn" id="mode-btn-text" onclick="setEnunciadoMode('text')">Escribir texto</button>
+          </div>
+          <div class="upload-zone" id="drop-pdf" ondragover="onDragOver(event,'drop-pdf')" ondragleave="onDragLeave('drop-pdf')" ondrop="onDrop(event,'pdf')">
+            <input type="file" id="file-pdf" name="pdf_file" accept="application/pdf,.pdf" multiple="multiple" onchange="onFileSelect('pdf', this)">
+            <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h6"/></svg></div>
+            <div class="upload-type">Enunciado (PDF)</div>
+            <div class="upload-hint">Arrastra o haz clic<br>Usa ⌘ o Shift para elegir varios PDFs</div>
+            <div class="upload-filename" id="pdf-filename"></div>
+            <div class="upload-change">Clic para agregar más</div>
+          </div>
+          <div class="upload-zone upload-zone--text hidden" id="drop-text">
+            <textarea class="enunciado-textarea" id="enunciado-text" placeholder="Escribe o pega aquí el enunciado del ejercicio…" oninput="onEnunciadoTextInput()"></textarea>
+          </div>
         </div>
         <div class="upload-zone" id="drop-zip" ondragover="onDragOver(event,'drop-zip')" ondragleave="onDragLeave('drop-zip')" ondrop="onDrop(event,'zip')">
           <input type="file" id="file-zip" accept=".zip" onchange="onFileSelect('zip', this)">
@@ -1399,6 +1435,23 @@
 
     // ── File upload ──
     const _files = { zip: null, pdf: [] };
+    let enunciadoMode = 'pdf'; // 'pdf' | 'text'
+
+    function setEnunciadoMode(mode) {
+      enunciadoMode = mode;
+      document.getElementById('mode-btn-pdf').classList.toggle('active', mode === 'pdf');
+      document.getElementById('mode-btn-text').classList.toggle('active', mode === 'text');
+      document.getElementById('drop-pdf').classList.toggle('hidden', mode !== 'pdf');
+      document.getElementById('drop-text').classList.toggle('hidden', mode !== 'text');
+      if (mode === 'text') setTimeout(() => document.getElementById('enunciado-text')?.focus(), 50);
+      updateRunButton();
+    }
+
+    function onEnunciadoTextInput() {
+      const val = document.getElementById('enunciado-text').value;
+      document.getElementById('drop-text').classList.toggle('has-content', val.trim().length > 0);
+      updateRunButton();
+    }
 
     function formatPdfSelection(files) {
       if (!files || !files.length) return '';
@@ -1408,7 +1461,11 @@
 
     function appendPregraderFiles(formData, files) {
       formData.append('zip_file', files.zip, files.zip.name);
-      files.pdf.forEach(file => formData.append('pdf_file', file, file.name));
+      if (enunciadoMode === 'text') {
+        formData.append('enunciado_text', document.getElementById('enunciado-text').value.trim());
+      } else {
+        files.pdf.forEach(file => formData.append('pdf_file', file, file.name));
+      }
     }
 
     function setSelectedPdfFiles(files, append = false) {
@@ -1445,7 +1502,10 @@
 
     function updateRunButton() {
       const btn = document.getElementById('btn-run');
-      const both = !!(_files.zip && _files.pdf.length > 0);
+      const enunciadoReady = enunciadoMode === 'text'
+        ? document.getElementById('enunciado-text').value.trim().length > 0
+        : _files.pdf.length > 0;
+      const both = !!(_files.zip && enunciadoReady);
       btn.disabled = !both;
       btn.classList.toggle('ready', both);
     }
@@ -1495,7 +1555,9 @@
 
     async function runPregrader() {
       if (!_files.zip) { flashZone('drop-zip'); return; }
-      if (!_files.pdf.length) { flashZone('drop-pdf'); return; }
+      if (enunciadoMode === 'text') {
+        if (!document.getElementById('enunciado-text').value.trim()) { flashZone('drop-text'); return; }
+      } else if (!_files.pdf.length) { flashZone('drop-pdf'); return; }
       await saveConfig();
 
       document.getElementById('log-output').innerHTML = '<span class="log-empty">Esperando salida...</span>';

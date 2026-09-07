@@ -618,10 +618,14 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
 
     enunciado_file = Path(enunciado_path)
     try:
-        print("Leyendo enunciado PDF:", enunciado_path)
-        enunciado_texto = extract_pdf_text(str(enunciado_file))
+        if enunciado_file.suffix.lower() == ".txt":
+            print("Leyendo enunciado (texto):", enunciado_path)
+            enunciado_texto = enunciado_file.read_text(encoding="utf-8")
+        else:
+            print("Leyendo enunciado PDF:", enunciado_path)
+            enunciado_texto = extract_pdf_text(str(enunciado_file))
     except Exception as e:
-        print("Error leyendo el PDF:", e)
+        print("Error leyendo el enunciado:", e)
         return
 
     extra_notes = os.environ.get("PREGRADER_EXTRA_NOTES", "").strip()
