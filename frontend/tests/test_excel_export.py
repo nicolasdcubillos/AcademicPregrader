@@ -33,7 +33,7 @@ class ExcelExportContentTests(unittest.TestCase):
         )
         self.assertEqual(
             self._build("pa").sheetnames,
-            ["Estudiantes", "Definitivas", "Parcial C++", "Parcial Java",
+            ["Estudiantes", "Definitivas (2)", "Definitivas", "Parcial C++", "Parcial Java",
              "Proyecto C++", "Proyecto Java", "Talleres"],
         )
         self.assertEqual(self._build("fpia").sheetnames, ["Estudiantes", "Definitivas"])
@@ -124,15 +124,18 @@ class ExcelExportContentTests(unittest.TestCase):
         self.assertEqual(ws["M1"].value, "Estado")
         self.assertEqual(ws["N1"].value, "Alerta de riesgo")
         self.assertEqual(ws["O1"].value, "Nota minima necesaria")
-        # Bloque resumen 2 filas después de la última fila de estudiantes (5 -> 7).
-        self.assertEqual(ws["A7"].value, "Total")
-        self.assertEqual(ws["B7"].value, "=COUNT(A3:A5)")
-        self.assertEqual(ws["A8"].value, "Retiro")
-        self.assertEqual(ws["B8"].value, 0)
-        self.assertEqual(ws["A9"].value, "Aprobados")
-        self.assertEqual(ws["B9"].value, '=COUNTIF(K3:K5,">=2.95")')
-        self.assertEqual(ws["A10"].value, "Reprobado")
-        self.assertEqual(ws["B10"].value, "=B7-B8-B9")
+        # Fila de promedios justo después de los estudiantes (5 -> 6).
+        self.assertEqual(ws["D6"].value, "=AVERAGE(D3:D5)")
+        # Bloque resumen en F/G, 4 filas después de la última fila de
+        # estudiantes (5 -> 9), tal como en el archivo real.
+        self.assertEqual(ws["F9"].value, "Total")
+        self.assertEqual(ws["G9"].value, "=COUNT(A3:A5)")
+        self.assertEqual(ws["F10"].value, "Retiro")
+        self.assertEqual(ws["G10"].value, 0)
+        self.assertEqual(ws["F11"].value, "Aprobados")
+        self.assertEqual(ws["G11"].value, '=COUNTIF(K3:K5,">=2.95")')
+        self.assertEqual(ws["F12"].value, "Reprobado")
+        self.assertEqual(ws["G12"].value, "=G9-G10-G11")
 
     def test_ip_aux_sheets_have_formulas_and_zero_grades(self):
         wb = self._build("ip", n=2)
@@ -158,15 +161,25 @@ class ExcelExportContentTests(unittest.TestCase):
         self.assertEqual(ws["D3"].value, "='Parcial C++'!M3")
         self.assertEqual(ws["E3"].value, "=+'Parcial Java'!M3")
         self.assertEqual(ws["F3"].value, "='Proyecto C++'!H3")
-        self.assertEqual(ws["G3"].value, "=IF('Proyecto Java'!I3>5,5,'Proyecto Java'!I3)")
+        self.assertEqual(ws["G3"].value, "=IF('Proyecto Java'!H3>5,5,'Proyecto Java'!H3)")
         self.assertEqual(ws["H3"].value, "=Talleres!U3")
         self.assertEqual(ws["I3"].value, "=Talleres!V3")
         self.assertEqual(
             ws["J3"].value,
             "=D3*$D$2+E3*$E$2+H3*$H$2+I3*$I$2+G3*$G$2+F3*$F$2",
         )
-        self.assertEqual(ws["A6"].value, "Total")
-        self.assertEqual(ws["B6"].value, "=COUNT(A3:A4)")
+        # Fila de promedios justo después de los estudiantes (4 -> 5).
+        self.assertEqual(ws["D5"].value, "=AVERAGE(D3:D4)")
+        # Bloque resumen en H/I, 4 filas después de la última fila de
+        # estudiantes (4 -> 8), tal como en el archivo real.
+        self.assertEqual(ws["H8"].value, "Total")
+        self.assertEqual(ws["I8"].value, "=COUNT(A3:A4)")
+        self.assertEqual(ws["H9"].value, "Retiro")
+        self.assertEqual(ws["I9"].value, 0)
+        self.assertEqual(ws["H10"].value, "Aprobados")
+        self.assertEqual(ws["I10"].value, '=COUNTIF(J3:J4,">=2.95")')
+        self.assertEqual(ws["H11"].value, "Reprobado")
+        self.assertEqual(ws["I11"].value, "=I8-I9-I10")
 
     def test_pa_aux_sheets_have_formulas_and_zero_grades(self):
         wb = self._build("pa", n=2)

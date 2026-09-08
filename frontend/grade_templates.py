@@ -62,6 +62,18 @@ STUDENTS_COLUMNS = {
 STUDENTS_TAB_COLOR = {"ip": (5, 0.6), "pa": (5, 0.6), "fpia": (5, 0.6)}
 DEFINITIVAS_TAB_COLOR = {"ip": (9, 0.6), "pa": (9, 0.6), "fpia": (9, 0.6)}
 
+# fpia Estudiantes: filas de datos en A y C quedan centradas (A además con
+# wrap_text); pa: A (nombre) también wrap+center, E (Grupo) centrado; ip no
+# centra ninguna columna de datos.
+STUDENTS_DATA_ALIGN_CENTER = {"fpia": {"A", "C"}, "pa": {"E"}}
+STUDENTS_DATA_WRAP_COLS = {"fpia": {"A"}, "pa": {"A"}}
+
+# Altura explícita de la fila 1 (encabezado) de "Estudiantes". La referencia
+# de ip sí trae una altura explícita de 15.0pt; fpia también; pa deja la
+# altura por defecto de la hoja (no se debe escribir row_dimensions para no
+# introducir una diferencia con el archivo real).
+STUDENTS_HEADER_ROW_HEIGHT = {"ip": 15.0, "pa": None, "fpia": 15.0}
+
 
 # ── Tipo fpia — Fundamentos de Programación IA ───────────────────────────────
 # Solo tiene 2 hojas: Estudiantes y Definitivas (sin hojas de componentes).
@@ -109,6 +121,29 @@ FPIA_HEADER_MERGES = [
 _FPIA_RAW_GRADE_COLS = ["E", "F", "G", "H", "I", "J", "K", "N", "O", "R", "S"]
 # numfmt "0.0" en las columnas de "Nota"/subtotales finales por estilo original.
 FPIA_DATA_DECIMAL_COLS = {"M", "Q", "R", "T", "U", "V"}
+
+# Anchos de columna reales de Definitivas (extraídos de FPIA 1329.xlsx); las
+# columnas que no aparecen aquí quedan con el ancho por defecto de la hoja.
+# La columna B ("#" auxiliar sin uso) está oculta en el archivo real.
+FPIA_DEFINITIVAS_COL_WIDTHS = {
+    "A": 4.25, "B": 8.125, "C": 13.25, "D": 33.375, "E": 16.125,
+    "L": 15.875, "N": 12.875,
+}
+FPIA_DEFINITIVAS_HIDDEN_COLS = {"B"}
+
+# Fila de promedios (=AVERAGE(...)) justo debajo de la última fila de
+# estudiante: en el archivo real cubre de L a V (los subtotales/nota/
+# definitiva), no las columnas de notas crudas.
+FPIA_AVERAGES_COLS = ("L", "V")
+
+# Formato condicional: 2 reglas (blancos / <3) en la columna "Definitiva",
+# incluyendo la fila de promedios (V{first}:V{last+1}).
+FPIA_CF_COL = "V"
+FPIA_CF_THRESHOLD = "3"
+
+# Alturas de fila 1/2 de "Definitivas": la 58.5pt de la fila 1 es necesaria
+# para que los encabezados multilínea de subtotal (L/P/T) no queden cortados.
+FPIA_DEFINITIVAS_ROW_HEIGHTS = {1: 58.5, 2: 22.5}
 
 
 def _fpia_row(r: int, er: int) -> dict:
@@ -170,6 +205,36 @@ IP_DEFINITIVAS_COL_WIDTHS = {
 }
 IP_DEFINITIVAS_MERGES = ["A1:A2", "B1:B2", "C1:C2"]
 
+# Bloque resumen (Total/Retiro/Aprobados/Reprobado): en el archivo real las
+# etiquetas van en la columna F y los valores en G, empezando 4 filas después
+# de la última fila de estudiante (no 2, y no en A/B).
+IP_SUMMARY_LABEL_COL = "F"
+IP_SUMMARY_VALUE_COL = "G"
+
+# Fila de promedios (=AVERAGE(...)) inmediatamente después de la última fila
+# de estudiante, para las columnas D..K (todas las de nota + Definitiva).
+IP_AVERAGES_COLS = ("D", "K")
+
+# Formato condicional (blancos / <2.95) sobre las columnas de nota D..K.
+IP_CF_RANGE = ("D", "K")
+IP_CF_THRESHOLD = "2.95"
+
+# Alturas de fila 1/2 de "Definitivas" (la referencia usa el alto por
+# defecto de la hoja, no se necesita override).
+IP_DEFINITIVAS_ROW_HEIGHTS: dict = {}
+
+# Alturas de fila 1/2 por hoja auxiliar (extraídas de IP 1189 M-J.xlsx). Las
+# filas de datos (3+) tienen alturas ad-hoc en el archivo real (comentarios
+# largos de un semestre puntual) que no se replican -son ruido de edición,
+# no parte de la plantilla-.
+IP_AUX_ROW_HEIGHTS = {
+    "Talleres y Quices": {1: 19.5, 2: 19.5},
+    "Parcial 1": {1: 15.0},
+    "Parcial 2": {1: 15.0, 2: 14.25},
+    "Parcial 3": {1: 14.45, 2: 30.0},
+    "Proyecto": {1: 14.45, 2: 15.0},
+}
+
 
 def _ip_row(r: int, er: int) -> dict:
     row = {
@@ -219,7 +284,17 @@ IP_AUX_SHEETS = {
         "grade_cols": list("EFGHIJKLMNOPQR"),
         "final_col": "S",
         "final_formula": "=IFERROR(AVERAGE(E{r}:R{r}), 0)",
+        "final_numfmt": "0.0",
         "comment_col": None,
+        "wrap_final_col": True,
+        # Único aux sheet cuyos encabezados de nota usan Calibri negro (no
+        # Aptos Narrow) en el archivo real -detalle histórico de ese tab-, y
+        # cuyo borde de columnas de nota va en negro (rgb) en vez del gris
+        # indexado por defecto.
+        "grade_header_font": "calibri_black",
+        "grade_border_color": "black",
+        "widths": {"A": 4.25, "B": 8.125, "C": 13.25, "D": 33.375, "E": 23.75, "S": 24.25},
+        "cf_range": None,
     },
     "Parcial 1": {
         "tab_color": None,
@@ -227,7 +302,11 @@ IP_AUX_SHEETS = {
         "grade_cols": ["E", "F"],
         "final_col": "G",
         "final_formula": "=+F{r}+E{r}",
+        "final_numfmt": "0.00",
         "comment_col": "H",
+        "no_wrap_cols": {"H"},
+        "widths": {"A": 4.25, "B": 8.125, "C": 13.25, "D": 33.375, "E": 26.25, "F": 30.625, "G": 18.25, "H": 54.75},
+        "cf_range": ("E", "H"),
     },
     "Parcial 2": {
         "tab_color": None,
@@ -235,7 +314,11 @@ IP_AUX_SHEETS = {
         "grade_cols": ["E", "F"],
         "final_col": "G",
         "final_formula": "=E{r}+F{r}",
+        "final_numfmt": "0.00",
         "comment_col": "H",
+        "no_wrap_cols": {"H"},
+        "widths": {"A": 4.25, "B": 8.125, "C": 13.25, "D": 33.375, "E": 27.875, "G": 24.75, "H": 38.625},
+        "cf_range": ("E", "H"),
     },
     "Parcial 3": {
         "tab_color": None,
@@ -243,7 +326,10 @@ IP_AUX_SHEETS = {
         "grade_cols": ["E", "F"],
         "final_col": "K",
         "final_formula": "=SUM(E{r}:J{r})/20",
+        "final_numfmt": "0.00",
         "comment_col": "L",
+        "widths": {"A": 4.25, "B": 8.125, "C": 13.25, "D": 33.375, "E": 26.25, "F": 32.125, "L": 20.375},
+        "cf_range": ("E", "L"),
     },
     "Proyecto": {
         "tab_color": None,
@@ -251,15 +337,22 @@ IP_AUX_SHEETS = {
         "grade_cols": ["E", "F", "G"],
         "final_col": None,
         "final_formula": None,
+        "final_numfmt": None,
         "comment_col": "H",
+        "no_wrap_cols": {"E", "F", "G", "H"},
+        "widths": {"A": 4.25, "B": 8.125, "C": 13.25, "D": 33.375, "E": 18.25, "H": 54.625},
+        "cf_range": ("E", "H"),
     },
 }
 
 
 # ── Tipo pa — Programación Avanzada ──────────────────────────────────────────
 
+PA_DEFINITIVAS_2_SHEET_NAME = "Definitivas (2)"
+
 PA_SHEET_ORDER = [
     STUDENTS_SHEET_NAME,
+    PA_DEFINITIVAS_2_SHEET_NAME,
     DEFINITIVAS_SHEET_NAME,
     "Parcial C++",
     "Parcial Java",
@@ -284,6 +377,39 @@ _PA_HEADERS = [
 _PA_FINAL_COL = "J"
 PA_DEFINITIVAS_COL_WIDTHS = {"A": 4.29, "B": 13.29, "C": 33.43, "D": 14.43, "K": 13.57}
 
+# Bloque resumen: etiquetas en H, valores en I (a diferencia de ip que usa
+# F/G), empezando 4 filas después de la última fila de estudiante.
+PA_SUMMARY_LABEL_COL = "H"
+PA_SUMMARY_VALUE_COL = "I"
+
+# Fila de promedios (=AVERAGE(...)) inmediatamente después de la última fila
+# de estudiante, para las columnas D..J (notas + Definitiva).
+PA_AVERAGES_COLS = ("D", "J")
+
+# Formato condicional (blancos / <2.95) sobre las columnas de nota D..J.
+PA_CF_RANGE = ("D", "J")
+PA_CF_THRESHOLD = "2.95"
+
+# "Definitivas (2)" es una hoja adicional presente en el archivo real de pa,
+# ubicada justo después de "Estudiantes". En el archivo real el profesor
+# pega ahí los valores ya calculados de fin de semestre (una foto estática,
+# sin fórmulas) para su propio archivo -no podemos reproducir ese contenido
+# puntual-. Generamos la hoja con la MISMA estructura/estilo/fórmulas que
+# "Definitivas" para que el archivo tenga la hoja y se vea igual; el
+# profesor puede pegar ahí sus valores finales como hace habitualmente.
+
+# Alturas de fila 1/2 de "Definitivas" (default de la hoja en la referencia).
+PA_DEFINITIVAS_ROW_HEIGHTS: dict = {}
+
+# Alturas de fila 1/2 por hoja auxiliar (extraídas de PA 1243 M-J.xlsx).
+PA_AUX_ROW_HEIGHTS = {
+    "Parcial C++": {1: 18.0, 2: 18.0},
+    "Parcial Java": {1: 23.25, 2: 23.25},
+    "Proyecto C++": {1: 16.5, 2: 16.5},
+    "Proyecto Java": {1: 33.0},
+    "Talleres": {1: 26.25, 2: 26.25},
+}
+
 
 def _pa_row(r: int, er: int) -> dict:
     row = {
@@ -293,7 +419,7 @@ def _pa_row(r: int, er: int) -> dict:
         "D": f"='Parcial C++'!M{r}",
         "E": f"=+'Parcial Java'!M{r}",
         "F": f"='Proyecto C++'!H{r}",
-        "G": f"=IF('Proyecto Java'!I{r}>5,5,'Proyecto Java'!I{r})",
+        "G": f"=IF('Proyecto Java'!H{r}>5,5,'Proyecto Java'!H{r})",
         "H": f"=Talleres!U{r}",
         "I": f"=Talleres!V{r}",
         "J": f"=D{r}*$D$2+E{r}*$E$2+H{r}*$H$2+I{r}*$I$2+G{r}*$G$2+F{r}*$F$2",
@@ -313,7 +439,12 @@ PA_AUX_SHEETS = {
         "grade_cols": list("EFGHIJKL"),
         "final_col": "M",
         "final_formula": "=IFERROR(AVERAGE(E{r}:L{r}), 0)",
+        "final_numfmt": "0.00",
         "comment_col": "N",
+        "no_wrap_cols": {"N"},
+        "small_font_cols": {"G", "L"},
+        "widths": {"A": 4.29, "B": 8.14, "C": 13.29, "D": 39.43, "E": 27.0, "M": 18.29, "N": 54.71},
+        "cf_range": ("E", "L"),
     },
     "Parcial Java": {
         "tab_color": (5, 0.8),
@@ -326,7 +457,12 @@ PA_AUX_SHEETS = {
         "grade_cols": list("EFGHIJKL"),
         "final_col": "M",
         "final_formula": "=IFERROR(AVERAGE(E{r}:L{r}), 0)",
+        "final_numfmt": "0.00",
         "comment_col": "N",
+        "no_wrap_cols": {"N"},
+        "small_font_cols": {"K"},
+        "widths": {"A": 4.29, "B": 8.14, "C": 13.29, "D": 38.57, "E": 19.14, "G": 21.57, "I": 22.43, "J": 21.57, "K": 25.29, "L": 21.57, "N": 38.57},
+        "cf_range": ("E", "L"),
     },
     "Proyecto C++": {
         "tab_color": (7, 0.8),
@@ -334,15 +470,28 @@ PA_AUX_SHEETS = {
         "grade_cols": ["E", "F", "G"],
         "final_col": "H",
         "final_formula": "=IFERROR(AVERAGE(E{r}:G{r}), 0)",
+        "final_numfmt": "0.00",
         "comment_col": "I",
+        "widths": {"A": 4.29, "B": 8.14, "C": 13.29, "D": 41.0, "E": 18.3, "G": 54.6, "H": 15.3},
+        "cf_range": ("E", "H"),
+        "grade_border_color": "black",
+        "border_black_cols": {"G", "H", "I"},
+        "no_wrap_cols": {"G", "I"},
+        "wrap_final_col": True,
     },
     "Proyecto Java": {
         "tab_color": (7, 0.8),
         "headers": ["#", "#", "ID", "Nombre", "Entrega 1", "Entrega 2", "Sustentación", "Proyecto Java (0-5)", "Comentarios"],
         "grade_cols": ["E", "F", "G"],
-        "final_col": "I",
+        "final_col": "H",
         "final_formula": "=IFERROR(AVERAGE(E{r}:G{r}), 0)",
-        "comment_col": "J",
+        "final_numfmt": "0.00",
+        "comment_col": "I",
+        "widths": {"A": 4.29, "B": 8.14, "C": 13.29, "D": 41.0, "E": 18.3, "G": 12.0, "H": 54.6, "I": 15.3},
+        "cf_range": ("E", "H"),
+        "grade_border_color": "black",
+        "border_black_cols": {"H", "I"},
+        "no_wrap_cols": {"I"},
     },
     "Talleres": {
         "tab_color": (8, 0.8),
@@ -357,8 +506,13 @@ PA_AUX_SHEETS = {
         "grade_cols": list("EFGHIJKLMNOPQRST"),
         "final_col": "U",
         "final_formula": "=IFERROR(AVERAGE(E{r}:M{r}), 0)",
+        "final_numfmt": "0.00",
         "extra_formulas": {"V": "=IFERROR(AVERAGE(N{r}:T{r}), 0)"},
         "comment_col": None,
+        "widths": {"A": 4.29, "B": 8.14, "C": 13.29, "D": 40.4, "E": 23.7, "R": 24.3, "T": 24.3, "U": 15.1},
+        "cf_range": ("E", "V"),
+        "wrap_final_col": True,
+        "wrap_cols": {"V"},
     },
 }
 
@@ -377,9 +531,19 @@ TEMPLATES = {
         "final_col": "V",
         "has_summary": False,
         "sheet_order": FPIA_SHEET_ORDER,
-        "col_widths": {},
+        "col_widths": FPIA_DEFINITIVAS_COL_WIDTHS,
+        "hidden_cols": FPIA_DEFINITIVAS_HIDDEN_COLS,
         "merges": [],
         "aux_sheets": {},
+        "aux_row_heights": {},
+        "definitivas_row_heights": FPIA_DEFINITIVAS_ROW_HEIGHTS,
+        "summary_label_col": None,
+        "summary_value_col": None,
+        "averages_cols": FPIA_AVERAGES_COLS,
+        "cf_range": (FPIA_CF_COL, FPIA_CF_COL),
+        "cf_threshold": FPIA_CF_THRESHOLD,
+        "cf_includes_averages_row": True,
+        "has_definitivas_2": False,
     },
     "ip": {
         "headers": _IP_HEADERS,
@@ -388,8 +552,18 @@ TEMPLATES = {
         "has_summary": True,
         "sheet_order": IP_SHEET_ORDER,
         "col_widths": IP_DEFINITIVAS_COL_WIDTHS,
+        "hidden_cols": set(),
         "merges": IP_DEFINITIVAS_MERGES,
         "aux_sheets": IP_AUX_SHEETS,
+        "aux_row_heights": IP_AUX_ROW_HEIGHTS,
+        "definitivas_row_heights": IP_DEFINITIVAS_ROW_HEIGHTS,
+        "summary_label_col": IP_SUMMARY_LABEL_COL,
+        "summary_value_col": IP_SUMMARY_VALUE_COL,
+        "averages_cols": IP_AVERAGES_COLS,
+        "cf_range": IP_CF_RANGE,
+        "cf_threshold": IP_CF_THRESHOLD,
+        "cf_includes_averages_row": False,
+        "has_definitivas_2": False,
     },
     "pa": {
         "headers": _PA_HEADERS,
@@ -398,8 +572,19 @@ TEMPLATES = {
         "has_summary": True,
         "sheet_order": PA_SHEET_ORDER,
         "col_widths": PA_DEFINITIVAS_COL_WIDTHS,
+        "hidden_cols": set(),
         "merges": [],
         "aux_sheets": PA_AUX_SHEETS,
+        "aux_row_heights": PA_AUX_ROW_HEIGHTS,
+        "definitivas_row_heights": PA_DEFINITIVAS_ROW_HEIGHTS,
+        "summary_label_col": PA_SUMMARY_LABEL_COL,
+        "summary_value_col": PA_SUMMARY_VALUE_COL,
+        "averages_cols": PA_AVERAGES_COLS,
+        "cf_range": PA_CF_RANGE,
+        "cf_threshold": PA_CF_THRESHOLD,
+        "cf_includes_averages_row": False,
+        "has_definitivas_2": True,
+        "definitivas_2_sheet_name": PA_DEFINITIVAS_2_SHEET_NAME,
     },
 }
 

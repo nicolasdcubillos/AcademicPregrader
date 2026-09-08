@@ -37,8 +37,9 @@ None`.
 import re
 
 from openpyxl import Workbook
-from openpyxl.formatting.rule import CellIsRule, FormulaRule
+from openpyxl.formatting.rule import CellIsRule, Rule
 from openpyxl.styles import Alignment, Border, Color, Font, PatternFill, Side
+from openpyxl.styles.differential import DifferentialStyle
 from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -71,6 +72,8 @@ BORDER_LRB = Border(left=_THIN, right=_THIN, top=_INVISIBLE, bottom=_THIN)
 ALIGN_CENTER = Alignment(horizontal="center", vertical="center")
 ALIGN_CENTER_WRAP = Alignment(horizontal="center", vertical="center", wrap_text=True)
 ALIGN_H_CENTER = Alignment(horizontal="center")
+ALIGN_WRAP_ONLY = Alignment(wrap_text=True)
+ALIGN_H_CENTER_WRAP = Alignment(horizontal="center", wrap_text=True)
 
 NUMFMT_ID = "00000000000"
 NUMFMT_GRADE_2 = "0.00"
@@ -78,8 +81,26 @@ NUMFMT_GRADE_1 = "0.0"
 NUMFMT_PCT = "0%"
 NUMFMT_INT = "0"
 
-_FILL_FPIA_SUBTOTAL = PatternFill("solid", fgColor=_theme(5, 0.6))
-_FILL_RETIRO = PatternFill("solid", fgColor=_theme(5, 0.8))
+_FILL_FPIA_SUBTOTAL = PatternFill("solid", fgColor=_theme(5, 0.6), bgColor=Color(indexed=64))
+_FILL_RETIRO = PatternFill("solid", fgColor=_theme(5, 0.8), bgColor=Color(indexed=64))
+
+# Un único aux sheet ("Talleres y Quices" de ip) usa Calibri negro en negrita
+# para los encabezados de nota, en vez de Aptos Narrow -detalle histórico de
+# ese tab en el archivo real-.
+_CALIBRI_BLACK_BOLD = Font(name="Calibri", size=11, bold=True, color=_BLACK)
+
+# ── Formato condicional: estilos "Bueno"/"Incorrecto" de Excel ───────────
+# Insight clave (verificado extrayendo los archivos reales): en los dxf de
+# formato condicional el color que Excel efectivamente pinta es `bgColor`,
+# no `fgColor` (al revés que en un PatternFill de celda normal).
+_CF_BLANKS_FONT = Font(color=Color(rgb="FF006100"))
+_CF_BLANKS_FILL = PatternFill(
+    patternType="solid", fgColor=Color(rgb="00000000"), bgColor=_theme(0, 0.0),
+)
+_CF_THRESHOLD_FONT = Font(color=Color(rgb="FF9C0006"))
+_CF_THRESHOLD_FILL = PatternFill(
+    patternType=None, fgColor=Color(rgb="00000000"), bgColor=Color(rgb="FFFFC7CE"),
+)
 
 
 def _numeric_or_text(value: str):
@@ -117,6 +138,9 @@ def _build_students_sheet(wb: Workbook, course_type: str, students: list[dict]) 
     ws = wb.create_sheet(gt.STUDENTS_SHEET_NAME)
     theme, tint = gt.STUDENTS_TAB_COLOR[course_type]
     ws.sheet_properties.tabColor = _theme(theme, tint)
+    header_height = gt.STUDENTS_HEADER_ROW_HEIGHT.get(course_type)
+    if header_height is not None:
+        ws.row_dimensions[1].height = header_height
 
     columns = gt.STUDENTS_COLUMNS[course_type]
     for col_letter, title, width, align in columns:
@@ -127,14 +151,38 @@ def _build_students_sheet(wb: Workbook, course_type: str, students: list[dict]) 
         ws.column_dimensions[col_letter].width = width
 
     name_col, id_col = columns[0][0], columns[1][0]
+    center_cols = gt.STUDENTS_DATA_ALIGN_CENTER.get(course_type, set())
+    wrap_cols = gt.STUDENTS_DATA_WRAP_COLS.get(course_type, set())
+
+    def _data_align(col_letter: str):
+        centered = col_letter in center_cols
+        wrapped = col_letter in wrap_cols
+        if centered and wrapped:
+            return ALIGN_H_CENTER_WRAP
+        if wrapped:
+            return ALIGN_WRAP_ONLY
+        if centered:
+            return ALIGN_H_CENTER
+        return None
+
     for i, student in enumerate(students):
         row = 2 + i
-        _set_cell(ws, row, name_col, value=student.get("full_name") or "", font=DATA_FONT_BLACK)
+        _set_cell(
+            ws, row, name_col, value=student.get("full_name") or "",
+            font=DATA_FONT_BLACK, alignment=_data_align(name_col),
+        )
         _set_cell(
             ws, row, id_col,
             value=_numeric_or_text(student.get("org_id")),
             font=DATA_FONT_BLACK, alignment=ALIGN_H_CENTER,
         )
+        # Carrera/Semestre/Grupo quedan sin valor (el profesor los llena a
+        # mano), pero igual heredan la fuente Aptos Narrow negro del resto
+        # de la fila en el archivo real -openpyxl no propaga el estilo del
+        # "Normal" named style a celdas sin estilo explícito, así que hay
+        # que asignarlo aquí para que no queden en Calibri por defecto-.
+        for extra_col, _, _, _ in columns[2:]:
+            _set_cell(ws, row, extra_col, font=DATA_FONT_BLACK, alignment=_data_align(extra_col))
     return ws
 
 
@@ -232,12 +280,17 @@ _DATA_STYLERS = {
 }
 
 
-def _build_definitivas_sheet(wb: Workbook, course_type: str, student_count: int) -> Worksheet:
+def _build_definitivas_sheet(
+    wb: Workbook, course_type: str, student_count: int, sheet_name: str | None = None,
+) -> tuple[Worksheet, int | None]:
+    """Construye la hoja "Definitivas" (o "Definitivas (2)" para pa) y
+    devuelve `(worksheet, averages_row)`; `averages_row` es `None` si no hay
+    estudiantes."""
     template = gt.get_template(course_type)
     headers = template["headers"]
     row_builder = template["row_builder"]
 
-    ws = wb.create_sheet(gt.DEFINITIVAS_SHEET_NAME)
+    ws = wb.create_sheet(sheet_name or gt.DEFINITIVAS_SHEET_NAME)
     theme, tint = gt.DEFINITIVAS_TAB_COLOR[course_type]
     ws.sheet_properties.tabColor = _theme(theme, tint)
 
@@ -341,95 +394,180 @@ def _build_definitivas_sheet(wb: Workbook, course_type: str, student_count: int)
             # centrada, con bordes).
             _apply_fpia_data_style(ws, "B", r)
 
+    averages_row = None
+    if student_count > 0:
+        avg_cols = template.get("averages_cols")
+        if avg_cols:
+            averages_row = last_data_row + 1
+            start_col, end_col = avg_cols
+            start_idx = column_index_from_string(start_col)
+            end_idx = column_index_from_string(end_col)
+            for col_idx in range(start_idx, end_idx + 1):
+                letter = get_column_letter(col_idx)
+                # La fila de promedios usa un estilo propio (no negrita, sin
+                # borde) distinto al de las filas de datos, aunque reutilice
+                # la misma columna final ("Definitiva"), que en las filas de
+                # datos SÍ va en negrita con borde.
+                _set_cell(
+                    ws, averages_row, col_idx,
+                    value=f"=AVERAGE({letter}{first_data_row}:{letter}{last_data_row})",
+                    font=DATA_FONT, alignment=ALIGN_H_CENTER, number_format=NUMFMT_GRADE_2,
+                )
+
     if template["has_summary"] and student_count > 0:
         final_col = template["final_col"]
-        summary_first_row = last_data_row + 2
+        label_col = template["summary_label_col"]
+        value_col = template["summary_value_col"]
+        label_idx = column_index_from_string(label_col)
+        value_idx = column_index_from_string(value_col)
+        summary_first_row = last_data_row + 4
         for offset, label in enumerate(gt.SUMMARY_ROW_LABELS):
             row = summary_first_row + offset
-            _set_cell(ws, row, 1, value=label, font=DATA_FONT_BOLD)
+            _set_cell(ws, row, label_idx, value=label, font=DATA_FONT)
         total_row = summary_first_row
         retiro_row = summary_first_row + 1
         aprobados_row = summary_first_row + 2
         reprobado_row = summary_first_row + 3
-        _set_cell(ws, total_row, 2, value=f"=COUNT(A{first_data_row}:A{last_data_row})", font=DATA_FONT)
-        _set_cell(ws, retiro_row, 2, value=0, font=DATA_FONT, fill=_FILL_RETIRO)
+        _set_cell(ws, total_row, value_idx, value=f"=COUNT(A{first_data_row}:A{last_data_row})", font=DATA_FONT)
+        _set_cell(ws, retiro_row, value_idx, value=0, font=DATA_FONT, fill=_FILL_RETIRO)
         _set_cell(
-            ws, aprobados_row, 2,
+            ws, aprobados_row, value_idx,
             value=f'=COUNTIF({final_col}{first_data_row}:{final_col}{last_data_row},">=2.95")',
             font=DATA_FONT,
         )
+        total_ref = f"{value_col}{total_row}"
+        retiro_ref = f"{value_col}{retiro_row}"
+        aprobados_ref = f"{value_col}{aprobados_row}"
         _set_cell(
-            ws, reprobado_row, 2,
-            value=f"=B{total_row}-B{retiro_row}-B{aprobados_row}", font=DATA_FONT,
+            ws, reprobado_row, value_idx,
+            value=f"={total_ref}-{retiro_ref}-{aprobados_ref}", font=DATA_FONT,
         )
 
-    # Anchos de columna.
+    # Anchos de columna: SOLO los explícitamente extraídos de la referencia.
+    # Si la referencia no define un ancho para una columna, se deja el
+    # ancho por defecto de la hoja (no se aplica ningún heurístico).
     default_widths = template["col_widths"]
-    for col_letter, title, _ in headers:
-        col_idx = column_index_from_string(col_letter)
-        letter = get_column_letter(col_idx)
-        if letter in default_widths:
-            ws.column_dimensions[letter].width = default_widths[letter]
-        elif title:
-            longest_line = max((len(line) for line in title.split("\n")), default=0)
-            ws.column_dimensions[letter].width = max(10, min(28, longest_line + 2))
+    for letter, width in default_widths.items():
+        ws.column_dimensions[letter].width = width
+    for letter in template.get("hidden_cols", ()):
+        ws.column_dimensions[letter].hidden = True
 
-    return ws
+    # Alturas de fila 1/2 (encabezados) según la referencia.
+    for row_num, height in template.get("definitivas_row_heights", {}).items():
+        ws.row_dimensions[row_num].height = height
+
+    return ws, averages_row
 
 
-def _add_conditional_formatting(ws, course_type, first_data_row, last_data_row):
-    if course_type == "ip":
-        sqref = f"D{first_data_row}:K{last_data_row}"
-    elif course_type == "pa":
-        sqref = f"D{first_data_row}:J{last_data_row}"
-    else:
+def _add_range_conditional_formatting(ws: Worksheet, sqref: str, first_cell: str, threshold: str) -> None:
+    """Agrega las 2 reglas de formato condicional "Bueno"/"Incorrecto" de
+    Excel (blancos en verde / < threshold en rosa) sobre `sqref`, replicando
+    exactamente los dxf (fuente + relleno) de los archivos reales."""
+    blanks_rule = Rule(
+        type="containsBlanks",
+        formula=[f"LEN(TRIM({first_cell}))=0"],
+        dxf=DifferentialStyle(font=_CF_BLANKS_FONT, fill=_CF_BLANKS_FILL),
+    )
+    ws.conditional_formatting.add(sqref, blanks_rule)
+    ws.conditional_formatting.add(
+        sqref,
+        CellIsRule(
+            operator="lessThan", formula=[threshold],
+            font=_CF_THRESHOLD_FONT, fill=_CF_THRESHOLD_FILL,
+        ),
+    )
+
+
+def _add_definitivas_conditional_formatting(ws, template, first_data_row, last_data_row, averages_row):
+    cf_range = template.get("cf_range")
+    if not cf_range:
         return
-    ws.conditional_formatting.add(
-        sqref,
-        FormulaRule(formula=[f"LEN(TRIM(D{first_data_row}))=0"], font=Font(color="FF006100")),
-    )
-    ws.conditional_formatting.add(
-        sqref,
-        CellIsRule(operator="lessThan", formula=["2.95"], font=Font(color="FF9C0006")),
-    )
+    start_col, end_col = cf_range
+    last_row = averages_row if template.get("cf_includes_averages_row") else last_data_row
+    sqref = f"{start_col}{first_data_row}:{end_col}{last_row}"
+    first_cell = f"{start_col}{first_data_row}"
+    _add_range_conditional_formatting(ws, sqref, first_cell, template["cf_threshold"])
 
 
 # ── Hojas auxiliares de componentes (ip / pa) ────────────────────────────
 
-def _build_aux_sheet(wb: Workbook, sheet_name: str, spec: dict, student_count: int) -> Worksheet:
+def _border_all(color: Color | None) -> Border:
+    if color is None:
+        return BORDER_ALL
+    side = Side(style="thin", color=color)
+    return Border(left=side, right=side, top=side, bottom=side)
+
+
+def _border_lrb(color: Color | None) -> Border:
+    if color is None:
+        return BORDER_LRB
+    side = Side(style="thin", color=color)
+    return Border(left=side, right=side, top=_INVISIBLE, bottom=side)
+
+
+def _build_aux_sheet(wb: Workbook, sheet_name: str, spec: dict, student_count: int,
+                      row_heights: dict) -> Worksheet:
     ws = wb.create_sheet(sheet_name)
     if spec.get("tab_color"):
         theme, tint = spec["tab_color"]
         ws.sheet_properties.tabColor = _theme(theme, tint)
 
     headers = spec["headers"]
+    grade_cols = set(spec.get("grade_cols", []))
+    final_col = spec.get("final_col")
+    comment_col = spec.get("comment_col")
+    grade_header_font = _CALIBRI_BLACK_BOLD if spec.get("grade_header_font") == "calibri_black" else HEADER_FONT
+    no_wrap_cols = set(spec.get("no_wrap_cols", ()))
+    # Detalle exacto del archivo real: algunas columnas usan el borde en
+    # negro (rgb) en vez del gris por defecto (indexed 64). Por defecto
+    # aplica a todas las columnas de nota, pero puede acotarse con
+    # "border_black_cols" cuando solo un subconjunto (p. ej. la columna de
+    # nota final + comentarios en "Proyecto C++/Java") lo necesita.
+    border_black_cols = set(spec.get("border_black_cols", grade_cols)) if spec.get("grade_border_color") == "black" else set()
+    # Algunas columnas de encabezado (títulos largos, p. ej. "Parcial C++
+    # (0-5)") usan una fuente más pequeña (10pt) en el archivo real para que
+    # el título quepa en la columna angosta.
+    small_font_cols = set(spec.get("small_font_cols", ()))
+    # Columnas adicionales (fuera de grade_cols/comment_col/final_col) cuyo
+    # encabezado también debe ir con wrap_text, p. ej. una segunda columna de
+    # "nota final" (Talleres!V, "Talleres Java (0-5)").
+    extra_wrap_cols = set(spec.get("wrap_cols", ()))
+
     for i, title in enumerate(headers):
         col_idx = i + 1
-        wrap = len(title) > 10
-        head_align = ALIGN_CENTER_WRAP if wrap else ALIGN_CENTER
-        _set_cell(ws, 1, col_idx, value=title, font=HEADER_FONT, border=BORDER_ALL, alignment=head_align)
-        _set_cell(ws, 2, col_idx, font=DATA_FONT, border=BORDER_LRB)
         letter = get_column_letter(col_idx)
-        if letter == "B":
-            ws.column_dimensions[letter].width = 8.13
-            ws.column_dimensions[letter].hidden = True
-        elif letter == "A":
-            ws.column_dimensions[letter].width = 4.25
-        elif letter == "C":
-            ws.column_dimensions[letter].width = 13.25
-        else:
-            longest = len(title)
-            ws.column_dimensions[letter].width = max(10, min(35, longest + 4))
+        is_grade_or_comment = letter in grade_cols or letter == comment_col or letter in extra_wrap_cols
+        if letter == final_col and spec.get("wrap_final_col"):
+            is_grade_or_comment = True
+        wrap = is_grade_or_comment and letter not in no_wrap_cols
+        head_align = ALIGN_CENTER_WRAP if wrap else ALIGN_CENTER
+        head_font = grade_header_font if letter in grade_cols else HEADER_FONT
+        if letter in small_font_cols:
+            head_font = Font(name=head_font.name, size=10, bold=head_font.bold, color=head_font.color)
+        header_border = _border_all(_BLACK) if letter in border_black_cols else BORDER_ALL
+        row2_border = _border_lrb(_BLACK) if letter in border_black_cols else BORDER_LRB
+        _set_cell(ws, 1, col_idx, value=title, font=head_font, border=header_border, alignment=head_align)
+        _set_cell(ws, 2, col_idx, font=DATA_FONT, border=row2_border)
+        ws.merge_cells(start_row=1, start_column=col_idx, end_row=2, end_column=col_idx)
 
-    grade_cols = spec.get("grade_cols", [])
-    final_col = spec.get("final_col")
+    # Anchos de columna: SOLO los explícitamente extraídos de la referencia
+    # de este sheet (mismo criterio que en "Definitivas" — sin heurístico).
+    for letter, width in spec.get("widths", {}).items():
+        ws.column_dimensions[letter].width = width
+    ws.column_dimensions["B"].hidden = True
+
+    for row_num, height in row_heights.items():
+        ws.row_dimensions[row_num].height = height
+
     final_formula = spec.get("final_formula")
+    final_numfmt = spec.get("final_numfmt") or NUMFMT_GRADE_2
     extra_formulas = spec.get("extra_formulas", {})
 
     for i in range(student_count):
         r = 3 + i
         er = 2 + i
         _set_cell(ws, r, "A", value=i + 1, font=DATA_FONT_BOLD, alignment=ALIGN_CENTER, border=BORDER_ALL)
+        _set_cell(ws, r, "B", font=DATA_FONT_BOLD, alignment=ALIGN_CENTER, border=BORDER_ALL)
         _set_cell(ws, r, "C", value=f"=Estudiantes!B{er}", font=DATA_FONT_BOLD,
                   alignment=ALIGN_CENTER_WRAP, border=BORDER_ALL, number_format=NUMFMT_ID)
         _set_cell(ws, r, "D", value=f"=Estudiantes!A{er}", font=DATA_FONT,
@@ -439,13 +577,20 @@ def _build_aux_sheet(wb: Workbook, sheet_name: str, spec: dict, student_count: i
                       alignment=ALIGN_CENTER_WRAP, border=BORDER_ALL, number_format=NUMFMT_GRADE_1)
         if final_col and final_formula:
             _set_cell(ws, r, final_col, value=final_formula.format(r=r), font=DATA_FONT,
-                      alignment=ALIGN_CENTER, border=BORDER_ALL, number_format=NUMFMT_GRADE_2)
+                      alignment=ALIGN_CENTER, border=BORDER_ALL, number_format=final_numfmt)
         for col_letter, formula in extra_formulas.items():
             _set_cell(ws, r, col_letter, value=formula.format(r=r), font=DATA_FONT,
                       alignment=ALIGN_CENTER, border=BORDER_ALL, number_format=NUMFMT_GRADE_2)
-        comment_col = spec.get("comment_col")
         if comment_col:
-            _set_cell(ws, r, comment_col, border=BORDER_ALL, alignment=ALIGN_CENTER_WRAP)
+            _set_cell(ws, r, comment_col, font=DATA_FONT, border=BORDER_ALL,
+                      alignment=ALIGN_CENTER_WRAP, number_format=NUMFMT_GRADE_1)
+
+    cf_range = spec.get("cf_range")
+    if cf_range and student_count > 0:
+        start_col, end_col = cf_range
+        last_row = 3 + student_count - 1
+        sqref = f"{start_col}3:{end_col}{last_row}"
+        _add_range_conditional_formatting(ws, sqref, f"{start_col}3", "3")
 
     return ws
 
@@ -471,19 +616,38 @@ def generate_course_workbook(course: dict, students: list[dict]) -> Workbook:
     default_sheet = wb.active
     wb.remove(default_sheet)
 
+    # Las 3 referencias usan el estilo con nombre "Normal" con fuente Aptos
+    # Narrow 11 en vez del Calibri 11 por defecto de openpyxl. Cualquier
+    # celda sin estilo explícito (incluidas las vacías de Carrera/Semestre,
+    # las parejas de merge, etc.) hereda este estilo. Mutar
+    # `wb._named_styles["Normal"].font` NO alcanza -openpyxl no lo enlaza al
+    # fontId 0 usado por las celdas sin estilo-; hay que mutar directamente
+    # la entrada 0 de `wb._fonts` (el font por defecto real del libro).
+    wb._fonts[0].name = FONT_NAME
+    wb._fonts[0].sz = FONT_SIZE
+    normal_style = wb._named_styles["Normal"]
+    normal_style.font = Font(name=FONT_NAME, size=FONT_SIZE)
+
     _build_students_sheet(wb, course_type, students)
-    def_ws = _build_definitivas_sheet(wb, course_type, student_count)
+    def_ws, averages_row = _build_definitivas_sheet(wb, course_type, student_count)
 
     if student_count > 0:
         first_data_row = 3
         last_data_row = first_data_row + student_count - 1
-        _add_conditional_formatting(def_ws, course_type, first_data_row, last_data_row)
+        _add_definitivas_conditional_formatting(def_ws, template, first_data_row, last_data_row, averages_row)
+
+    if template.get("has_definitivas_2"):
+        _build_definitivas_sheet(
+            wb, course_type, student_count, sheet_name=template["definitivas_2_sheet_name"],
+        )
 
     for sheet_name in template["sheet_order"]:
-        if sheet_name in (gt.STUDENTS_SHEET_NAME, gt.DEFINITIVAS_SHEET_NAME):
+        if sheet_name in (gt.STUDENTS_SHEET_NAME, gt.DEFINITIVAS_SHEET_NAME,
+                          template.get("definitivas_2_sheet_name")):
             continue
         spec = template["aux_sheets"][sheet_name]
-        _build_aux_sheet(wb, sheet_name, spec, student_count)
+        row_heights = template.get("aux_row_heights", {}).get(sheet_name, {})
+        _build_aux_sheet(wb, sheet_name, spec, student_count, row_heights)
 
     # Reordena las hojas exactamente como en los archivos de referencia.
     for idx, sheet_name in enumerate(template["sheet_order"]):
