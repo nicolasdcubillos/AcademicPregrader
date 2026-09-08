@@ -771,7 +771,26 @@ def _has_api_key(cfg: configparser.RawConfigParser, provider: str) -> bool:
     )
 
 
+def _azure_openai_settings(cfg: configparser.RawConfigParser) -> tuple[str, str, str]:
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "").strip() or cfg.get(
+        "llm", "azure_openai_endpoint", fallback=""
+    ).strip()
+    deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "").strip() or cfg.get(
+        "llm", "azure_openai_deployment", fallback=""
+    ).strip()
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "").strip() or cfg.get(
+        "llm", "azure_openai_api_version", fallback="2024-10-21"
+    ).strip()
+    return endpoint.rstrip("/"), deployment, api_version
+
+
 def _provider_is_available(cfg: configparser.RawConfigParser, provider: str) -> bool:
+    if provider == "azure_openai":
+        endpoint, deployment, _ = _azure_openai_settings(cfg)
+        return (
+            cfg.getboolean("llm", "azure_openai_enabled", fallback=False)
+            and bool(endpoint and deployment)
+        )
     return (
         provider in {"openai", "gemini"}
         and cfg.getboolean("llm", f"{provider}_enabled", fallback=True)
@@ -782,12 +801,17 @@ def _provider_is_available(cfg: configparser.RawConfigParser, provider: str) -> 
 def _available_providers(cfg: configparser.RawConfigParser) -> list[str]:
     return [
         provider
-        for provider in ("openai", "gemini")
+        for provider in ("azure_openai", "openai", "gemini")
         if _provider_is_available(cfg, provider)
     ]
 
 
-def _provider_defaults(provider: str) -> tuple[str, str]:
+def _provider_defaults(
+    provider: str, cfg: Optional[configparser.RawConfigParser] = None
+) -> tuple[str, str]:
+    if provider == "azure_openai":
+        deployment = _azure_openai_settings(cfg or _read_global_cfg())[1]
+        return "azure_openai", deployment
     if provider == "gemini":
         return "gemini", "gemini-2.0-flash"
     return "openai", "gpt-5-mini"
@@ -796,10 +820,12 @@ def _provider_defaults(provider: str) -> tuple[str, str]:
 def _effective_provider(cfg: configparser.RawConfigParser, requested: str) -> tuple[str, Optional[str]]:
     available = _available_providers(cfg)
     if requested in available:
+        if requested == "azure_openai":
+            return requested, _provider_defaults(requested, cfg)[1]
         return requested, None
     if available:
         provider = available[0]
-        return provider, _provider_defaults(provider)[1]
+        return provider, _provider_defaults(provider, cfg)[1]
     return "openai", "gpt-5-mini"
 
 
@@ -822,6 +848,7 @@ def get_config():
     cfg = _read_global_cfg()
     uc = _effective_user_config(session["user"])
     provider, fallback_model = _effective_provider(cfg, str(uc["llm_provider"]))
+    _, azure_deployment, _ = _azure_openai_settings(cfg)
     return jsonify({
         **uc,
         "llm_provider": provider,
@@ -831,6 +858,8 @@ def get_config():
         "openai_has_api_key": _has_api_key(cfg, "openai"),
         "gemini_available": _provider_is_available(cfg, "gemini"),
         "openai_available": _provider_is_available(cfg, "openai"),
+        "azure_openai_available": _provider_is_available(cfg, "azure_openai"),
+        "azure_openai_deployment": azure_deployment,
         "campus_export_enabled": cfg.getboolean("features", "campus_export_enabled", fallback=False),
     })
 
@@ -851,7 +880,7 @@ def save_config():
         "enable_cache":        bool(data.get("enable_cache", False)),
         "comment_on_max":      bool(data.get("comment_on_max", False)),
         "llm_provider":        provider,
-        "llm_model":           fallback_model or str(data.get("llm_model", _provider_defaults(provider)[1])),
+        "llm_model":           fallback_model or str(data.get("llm_model", _provider_defaults(provider, cfg)[1])),
         "threshold":           float(data.get("threshold", 0.7) or 0.7),
     }
     auth.save_user_config(session["user"], saved)
@@ -865,7 +894,14 @@ def _is_openai_reasoning_model(model: str) -> bool:
     return m.startswith(("gpt-5", "o1", "o3", "o4"))
 
 
-def _call_llm_question(provider: str, model: str, api_key: str, prompt: str) -> Optional[str]:
+def _call_llm_question(
+    provider: str,
+    model: str,
+    api_key: str,
+    prompt: str,
+    azure_endpoint: str = "",
+    azure_api_version: str = "2024-10-21",
+) -> Optional[str]:
     if provider == "gemini":
         try:
             import google.generativeai as genai
@@ -888,6 +924,28 @@ def _call_llm_question(provider: str, model: str, api_key: str, prompt: str) -> 
             return r.choices[0].message.content
         except Exception:
             return None
+    elif provider == "azure_openai":
+        try:
+            from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+            from openai import AzureOpenAI
+            token_provider = get_bearer_token_provider(
+                DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+            )
+            client = AzureOpenAI(
+                azure_endpoint=azure_endpoint,
+                azure_ad_token_provider=token_provider,
+                api_version=azure_api_version,
+            )
+            call_kwargs = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+            if _is_openai_reasoning_model(model):
+                call_kwargs["max_completion_tokens"] = 1024
+                call_kwargs["reasoning_effort"] = "low"
+            else:
+                call_kwargs["temperature"] = 0.3
+                call_kwargs["max_tokens"] = 1024
+            return client.chat.completions.create(**call_kwargs).choices[0].message.content
+        except Exception:
+            return None
     return None
 
 
@@ -906,12 +964,15 @@ def ask_ai():
     provider, fallback_model = _effective_provider(cfg, str(uc["llm_provider"]))
     model = fallback_model or str(uc["llm_model"])
 
+    azure_endpoint, _, azure_api_version = _azure_openai_settings(cfg)
     if provider == "gemini":
         api_key = os.environ.get("GEMINI_API_KEY", "").strip() or cfg.get("llm", "gemini_api_key", fallback="")
-    else:
+    elif provider == "openai":
         api_key = os.environ.get("OPENAI_API_KEY", "").strip() or cfg.get("llm", "openai_api_key", fallback="")
+    else:
+        api_key = ""
 
-    if not api_key:
+    if provider != "azure_openai" and not api_key:
         return jsonify({"error": "No hay API key configurada."}), 503
 
     username = session["user"]
@@ -929,7 +990,9 @@ def ask_ai():
               + statement_section + code_section +
               f"\nPREGUNTA DEL EVALUADOR:\n{question}")
 
-    answer = _call_llm_question(provider, model, api_key, prompt)
+    answer = _call_llm_question(
+        provider, model, api_key, prompt, azure_endpoint, azure_api_version
+    )
     if answer is None:
         return jsonify({"error": "El LLM no pudo responder. Intenta de nuevo."}), 503
     return jsonify({"answer": answer})
@@ -1058,6 +1121,10 @@ def build_job_config_dir(username: str) -> str:
     cfg.set("llm", "model",    fallback_model or str(uc["llm_model"]))    # usuario
     cfg.set("llm", "gemini_api_key", g.get("llm", "gemini_api_key", fallback=""))   # admin
     cfg.set("llm", "openai_api_key", g.get("llm", "openai_api_key", fallback=""))   # admin
+    azure_endpoint, azure_deployment, azure_api_version = _azure_openai_settings(g)
+    cfg.set("llm", "azure_openai_endpoint", azure_endpoint)
+    cfg.set("llm", "azure_openai_deployment", azure_deployment)
+    cfg.set("llm", "azure_openai_api_version", azure_api_version)
 
     cfg.add_section("paths")
     cfg.set("paths", "jplag_jar", g.get("paths", "jplag_jar", fallback=_default_jplag()))  # admin
@@ -1097,11 +1164,16 @@ def admin_dashboard():
 def admin_get_config():
     """Config global (solo admin). No devuelve el valor de las claves, solo su estado."""
     cfg = _read_global_cfg()
+    azure_endpoint, azure_deployment, azure_api_version = _azure_openai_settings(cfg)
     return jsonify({
         "gemini_has_api_key": _has_api_key(cfg, "gemini"),
         "openai_has_api_key": _has_api_key(cfg, "openai"),
         "gemini_enabled":     cfg.getboolean("llm", "gemini_enabled", fallback=True),
         "openai_enabled":     cfg.getboolean("llm", "openai_enabled", fallback=True),
+        "azure_openai_enabled": cfg.getboolean("llm", "azure_openai_enabled", fallback=False),
+        "azure_openai_endpoint": azure_endpoint,
+        "azure_openai_deployment": azure_deployment,
+        "azure_openai_api_version": azure_api_version,
         "jplag_jar":          cfg.get("paths",       "jplag_jar",          fallback=_default_jplag()),
         "max_workers":        cfg.getint("performance", "max_workers",     fallback=4),
         "campus_export_enabled": cfg.getboolean("features", "campus_export_enabled", fallback=False),
@@ -1123,6 +1195,10 @@ def admin_save_config():
     ensure("llm")
     cfg.set("llm", "gemini_enabled", "true" if bool(data.get("gemini_enabled", True)) else "false")
     cfg.set("llm", "openai_enabled", "true" if bool(data.get("openai_enabled", True)) else "false")
+    cfg.set("llm", "azure_openai_enabled", "true" if bool(data.get("azure_openai_enabled", False)) else "false")
+    cfg.set("llm", "azure_openai_endpoint", str(data.get("azure_openai_endpoint", "")).strip().rstrip("/"))
+    cfg.set("llm", "azure_openai_deployment", str(data.get("azure_openai_deployment", "")).strip())
+    cfg.set("llm", "azure_openai_api_version", str(data.get("azure_openai_api_version", "2024-10-21")).strip())
     new_gemini_key = str(data.get("gemini_api_key", "")).strip()
     new_openai_key = str(data.get("openai_api_key", "")).strip()
     if new_gemini_key and not os.environ.get("GEMINI_API_KEY", "").strip():

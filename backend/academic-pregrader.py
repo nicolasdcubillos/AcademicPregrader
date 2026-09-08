@@ -549,12 +549,75 @@ def _llm_evaluate_openai(code, enunciado, model, api_key, max_retries=5):
     return None
 
 
-def llm_evaluate(code, enunciado, provider, model, api_key=None, max_retries=5):
+def _llm_evaluate_azure_openai(
+    code, enunciado, deployment, endpoint, api_version, max_retries=5
+):
+    try:
+        from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+        from openai import AzureOpenAI
+    except ImportError:
+        print("  -> Error: 'azure-identity' u 'openai' no están instalados.")
+        return None
+
+    if not endpoint or not deployment:
+        print("  -> Error: endpoint o deployment de Azure OpenAI no configurado.")
+        return None
+
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+    )
+    client = AzureOpenAI(
+        azure_endpoint=endpoint,
+        azure_ad_token_provider=token_provider,
+        api_version=api_version,
+    )
+    prompt = _build_eval_prompt(code, enunciado)
+    call_kwargs = {
+        "model": deployment,
+        "messages": [
+            {"role": "system", "content": _EVAL_SYSTEM_INSTRUCTION},
+            {"role": "user", "content": prompt},
+        ],
+        "response_format": {"type": "json_object"},
+    }
+    if _is_openai_reasoning_model(deployment):
+        call_kwargs["max_completion_tokens"] = 1024
+        call_kwargs["reasoning_effort"] = "low"
+    else:
+        call_kwargs["temperature"] = 0.0
+        call_kwargs["seed"] = 42
+        call_kwargs["max_tokens"] = 1024
+
+    for attempt in range(1, max_retries + 1):
+        if attempt > 1:
+            print(f"  -> Reintento {attempt}/{max_retries}...")
+            time.sleep(4)
+        try:
+            response = client.chat.completions.create(**call_kwargs)
+            data = json.loads(response.choices[0].message.content)
+            result = _validate_eval_data(data)
+            print("  -> JSON validado correctamente")
+            return result
+        except Exception as exc:
+            print(f"  -> ERROR en Azure OpenAI (intento {attempt}): {exc}")
+
+    print("  -> Falló tras todos los reintentos")
+    return None
+
+
+def llm_evaluate(
+    code, enunciado, provider, model, api_key=None, max_retries=5,
+    azure_endpoint="", azure_api_version="2024-10-21"
+):
     print(f"  -> Enviando al LLM ({provider} / {model})...")
     if provider == "gemini":
         return _llm_evaluate_gemini(code, enunciado, model, api_key, max_retries)
     elif provider == "openai":
         return _llm_evaluate_openai(code, enunciado, model, api_key, max_retries)
+    elif provider == "azure_openai":
+        return _llm_evaluate_azure_openai(
+            code, enunciado, model, azure_endpoint, azure_api_version, max_retries
+        )
     else:
         print(f"  -> Proveedor desconocido: '{provider}'")
         return None
@@ -646,6 +709,12 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
         )
     else:
         llm_api_key = ""
+    azure_openai_endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "").strip() or config.get(
+        "llm", "azure_openai_endpoint", fallback=""
+    )
+    azure_openai_api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "").strip() or config.get(
+        "llm", "azure_openai_api_version", fallback="2024-10-21"
+    )
     enable_compilation = config.getboolean("steps", "enable_compilation", fallback=True)
     enable_plagiarism  = config.getboolean("steps", "enable_plagiarism",  fallback=False)
     enable_llm         = config.getboolean("steps", "enable_llm",         fallback=True)
@@ -799,7 +868,9 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
             else:
                 resp = llm_evaluate(code, enunciado_texto,
                                     llm_provider, llm_model,
-                                    api_key=llm_api_key)
+                                    api_key=llm_api_key,
+                                    azure_endpoint=azure_openai_endpoint,
+                                    azure_api_version=azure_openai_api_version)
                 if resp is not None:
                     with _cache_lock:
                         if enable_cache:

@@ -833,6 +833,10 @@
               <input type="radio" name="llm-provider" value="openai" style="display:none"/>
               <div class="pc-name">GPT</div><div class="pc-sub">OpenAI</div>
             </label>
+            <label class="provider-card" id="pc-azure_openai" onclick="onProviderChange('azure_openai')">
+              <input type="radio" name="llm-provider" value="azure_openai" style="display:none"/>
+              <div class="pc-name">GPT</div><div class="pc-sub">Azure OpenAI</div>
+            </label>
             <label class="provider-card" id="pc-gemini" onclick="onProviderChange('gemini')">
               <input type="radio" name="llm-provider" value="gemini" style="display:none"/>
               <div class="pc-name">Gemini</div><div class="pc-sub">Google AI</div>
@@ -1243,11 +1247,12 @@
         { value: 'gpt-4o-mini',   label: 'GPT-4o Mini' },
         { value: '__custom__',    label: 'Personalizado...' },
       ],
+      azure_openai: [],
     };
-    let _providerAvailability = { openai: false, gemini: false };
+    let _providerAvailability = { azure_openai: false, openai: false, gemini: false };
 
     function setProviderCard(provider) {
-      ['openai','gemini'].forEach(p => {
+      ['azure_openai','openai','gemini'].forEach(p => {
         const card = document.getElementById('pc-' + p);
         if (!card) return;
         card.classList.toggle('selected', p === provider);
@@ -1300,7 +1305,9 @@
 
     function getSelectedModel() {
       const sel = document.getElementById('cfg-llm-model');
-      const fallback = getSelectedProvider() === 'gemini' ? 'gemini-2.0-flash' : 'gpt-5-mini';
+      const provider = getSelectedProvider();
+      const fallback = provider === 'gemini' ? 'gemini-2.0-flash' :
+        provider === 'azure_openai' ? (MODEL_PRESETS.azure_openai[0]?.value || '') : 'gpt-5-mini';
       if (!sel) return fallback;
       if (sel.value === '__custom__')
         return document.getElementById('cfg-llm-model-custom').value.trim() || fallback;
@@ -1321,7 +1328,15 @@
         document.getElementById('cfg-cache').checked       = cfg.enable_cache        ?? false;
         document.getElementById('cfg-comment-max').checked = cfg.comment_on_max      ?? false;
         document.getElementById('btn-campus').style.display = cfg.campus_export_enabled ? '' : 'none';
-        _providerAvailability = { openai: !!cfg.openai_available, gemini: !!cfg.gemini_available };
+        const azureDeployment = cfg.azure_openai_deployment || '';
+        MODEL_PRESETS.azure_openai = azureDeployment
+          ? [{ value: azureDeployment, label: `${azureDeployment} — deployment de Azure` }]
+          : [];
+        _providerAvailability = {
+          azure_openai: !!cfg.azure_openai_available,
+          openai: !!cfg.openai_available,
+          gemini: !!cfg.gemini_available
+        };
         updateProviderVisibility();
         const provider = cfg.llm_provider || 'openai';
         const model    = cfg.llm_model    || 'gpt-5-mini';

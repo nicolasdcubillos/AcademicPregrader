@@ -41,10 +41,19 @@ jobs:
 
       - name: Deploy new revision to Container App
         run: |
+          az containerapp identity assign \
+            --name "${{ vars.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --system-assigned
+
           az containerapp update \
             --name "${{ vars.CONTAINERAPP_NAME }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --image "${{ vars.ACR_NAME }}.azurecr.io/pregrader:${{ github.sha }}"
+            --image "${{ vars.ACR_NAME }}.azurecr.io/pregrader:${{ github.sha }}" \
+            --set-env-vars \
+              "AZURE_OPENAI_ENDPOINT=${{ vars.AZURE_OPENAI_ENDPOINT }}" \
+              "AZURE_OPENAI_DEPLOYMENT=${{ vars.AZURE_OPENAI_DEPLOYMENT }}" \
+              "AZURE_OPENAI_API_VERSION=2024-10-21"
 
       - name: Show app URL
         run: |

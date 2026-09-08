@@ -93,15 +93,37 @@ enable_llm         = true   # Enable LLM-based evaluation
 jplag_jar = /path/to/jplag.jar  # JPlag v4+ JAR (only needed if enable_plagiarism=true)
 
 [llm]
-provider = openai       # openai (default) or gemini
+provider = openai       # openai (default), azure_openai, or gemini
 model = gpt-4o
 openai_enabled = true   # Admin can expose or hide each provider
 gemini_enabled = true
+azure_openai_enabled = false
+azure_openai_endpoint = https://your-resource.openai.azure.com
+azure_openai_deployment = your-deployment-name
+azure_openai_api_version = 2024-10-21
 openai_api_key =        # Prefer OPENAI_API_KEY in deployed environments
 gemini_api_key =        # Prefer GEMINI_API_KEY in deployed environments
 
 [plagiarism]
 threshold = 0.7    # Similarity threshold to flag plagiarism (0.0–1.0)
+```
+
+For Azure OpenAI without API keys, configure the repository variables
+`AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`. The deployment workflow
+enables the Container App's system-assigned identity. Assign that identity the
+**Cognitive Services OpenAI User** role on the Azure OpenAI resource once:
+
+```bash
+PRINCIPAL_ID=$(az containerapp identity show \
+  --name "$CONTAINERAPP_NAME" \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --query principalId -o tsv)
+
+az role assignment create \
+  --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Cognitive Services OpenAI User" \
+  --scope "$AZURE_OPENAI_RESOURCE_ID"
 ```
 
 ---
@@ -153,7 +175,7 @@ python src/academic-pregrader.py grading_session/
 - Python 3.8+
 - `pdfplumber` (`pip install pdfplumber`)
 - `g++` available on the PATH
-- An OpenAI or Gemini API key
+- An OpenAI or Gemini API key, or Azure OpenAI with `DefaultAzureCredential`
 - Java 11+ (only if `enable_plagiarism=true`)
 - [JPlag v4+](https://github.com/jplag/JPlag/releases) (only if `enable_plagiarism=true`)
 
@@ -198,4 +220,3 @@ enable_llm         = true
 ```
 
 With `enable_plagiarism=false` (the default), plagiarism detection is skipped and the `Plagio`, `ConQuien`, and `Porcentaje` columns will be empty.
-

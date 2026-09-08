@@ -26,7 +26,8 @@ flowchart LR
         ACR[Azure Container Registry Basic] -->|imagen Docker| CA
     end
 
-    CORE -->|API HTTPS; código, enunciado y rúbrica| OAI[OpenAI API]
+    CORE -->|Identidad administrada; código, enunciado y rúbrica| AOAI[Azure OpenAI]
+    CORE -->|API HTTPS; proveedor opcional| OAI[OpenAI API]
     CORE -->|API HTTPS; proveedor alternativo| GEM[Gemini API]
 
     subgraph CICD[CI/CD]
@@ -58,7 +59,8 @@ flowchart LR
 | Identidades administradas y OIDC | Una identidad del contenedor y una de CI/CD | Sin cargo directo | **US$0** |
 | Ingress HTTPS y certificado del FQDN de Azure | Administrado por Container Apps | Sin cargo fijo adicional | **US$0** |
 | GitHub Actions | Un build y despliegue por cambio en `main` | Incluido según cuota del plan; ACR Tasks puede generar un cargo pequeño por build | **US$0 o variable** |
-| OpenAI o Gemini | Una llamada por estudiante, más reintentos | Tokens de entrada y salida | **Variable; no incluido en Azure** |
+| Azure OpenAI | Una llamada por estudiante, más reintentos | Tokens cargados a la suscripción | **Variable; puede consumir crédito elegible de Azure** |
+| OpenAI o Gemini (opcionales) | Una llamada por estudiante, más reintentos | Tokens de entrada y salida | **Variable; no incluido en Azure** |
 
 El costo base esperable, sin evaluaciones y con la aplicación escalada a cero, es de aproximadamente **US$5,10 al mes**. ACR Basic representa casi todo ese valor.
 
