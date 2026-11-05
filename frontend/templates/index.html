@@ -19,23 +19,23 @@
 <body>
 
   <!-- ── Settings Modal ── -->
-  <div class="modal-overlay hidden" id="settings-overlay" onclick="closeSettingsOutside(event)">
-    <div class="modal" onclick="event.stopPropagation()">
+  <div class="modal-overlay hidden" id="settings-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <div class="modal-header">
-        <span class="modal-title">
-          <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style="color:var(--p3)">
+        <span class="modal-title" id="settings-title">
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor" style="color:var(--p3)" aria-hidden="true">
             <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
           </svg>
           Configuración
         </span>
-        <button class="modal-close" onclick="closeSettings()">✕</button>
+        <button type="button" class="modal-close" data-action="closeSettings" aria-label="Cerrar configuración">✕</button>
       </div>
 
       <div class="modal-body">
 
         <div class="settings-section">
           <div class="settings-section-title">Tipo de entrega</div>
-          <label class="field-label">Formato de los archivos</label>
+          <label class="field-label" for="cfg-language">Formato de los archivos</label>
           <select id="cfg-language" class="select-input">
             <option value="auto">Automático — detecta por carpeta</option>
             <option value="cpp">C++ (.cpp)</option>
@@ -88,23 +88,23 @@
         <div class="settings-section">
           <div class="settings-section-title">Proveedor de evaluación</div>
           <div class="settings-grid3">
-            <label class="provider-card" id="pc-openai" onclick="onProviderChange('openai')">
+            <label class="provider-card" id="pc-openai" data-action="onProviderChange" data-arg="openai">
               <input type="radio" name="llm-provider" value="openai" style="display:none"/>
               <div class="pc-name">GPT</div><div class="pc-sub">OpenAI</div>
             </label>
-            <label class="provider-card" id="pc-azure_openai" onclick="onProviderChange('azure_openai')">
+            <label class="provider-card" id="pc-azure_openai" data-action="onProviderChange" data-arg="azure_openai">
               <input type="radio" name="llm-provider" value="azure_openai" style="display:none"/>
               <div class="pc-name">GPT</div><div class="pc-sub">Azure OpenAI</div>
             </label>
-            <label class="provider-card" id="pc-gemini" onclick="onProviderChange('gemini')">
+            <label class="provider-card" id="pc-gemini" data-action="onProviderChange" data-arg="gemini">
               <input type="radio" name="llm-provider" value="gemini" style="display:none"/>
               <div class="pc-name">Gemini</div><div class="pc-sub">Google AI</div>
             </label>
           </div>
           <div id="llm-model-controls" style="margin-top:12px">
-            <label class="field-label">Modelo</label>
-            <select class="select-input" id="cfg-llm-model" onchange="onModelChange()"></select>
-            <input class="small-input hidden" id="cfg-llm-model-custom" type="text" placeholder="nombre-del-modelo-personalizado" style="margin-top:7px"/>
+            <label class="field-label" for="cfg-llm-model">Modelo</label>
+            <select class="select-input" id="cfg-llm-model" data-on-change="onModelChange"></select>
+            <input class="small-input hidden" id="cfg-llm-model-custom" type="text" placeholder="nombre-del-modelo-personalizado" aria-label="Nombre del modelo personalizado" style="margin-top:7px"/>
           </div>
           <p class="field-hint hidden" id="llm-apikey-status" style="margin-top:10px"></p>
         </div>
@@ -112,10 +112,10 @@
         <div class="settings-section">
           <div class="settings-section-title">Detección de plagio</div>
           <div>
-            <label class="field-label">Umbral de similitud (0.0 – 1.0)</label>
+            <label class="field-label" for="cfg-threshold">Umbral de similitud (0.0 – 1.0)</label>
             <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
-              <input type="range" id="cfg-threshold-range" min="0" max="1" step="0.05" value="0.7" style="flex:1" oninput="syncThreshold(this.value)" />
-              <input class="small-input" id="cfg-threshold" type="number" min="0" max="1" step="0.05" style="width:68px;flex-shrink:0" oninput="syncThresholdRange(this.value)" />
+              <input type="range" id="cfg-threshold-range" min="0" max="1" step="0.05" value="0.7" style="flex:1" aria-label="Umbral de similitud" data-on-input="syncThreshold" />
+              <input class="small-input" id="cfg-threshold" type="number" min="0" max="1" step="0.05" style="width:68px;flex-shrink:0" data-on-input="syncThresholdRange" />
             </div>
             <p class="field-hint" style="margin-top:5px">Solo aplica si activas la detección de plagio arriba.</p>
           </div>
@@ -124,43 +124,42 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn-run" id="btn-save-cfg" onclick="saveConfig()" style="margin-top:0;padding:13px">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4.5a.5.5 0 0 0-.146-.354l-3-3A.5.5 0 0 0 11.5 1H2zm3 4a1 1 0 0 1 1-1h4a1 1 0 0 1 0 2H6a1 1 0 0 1-1-1zm-1 7v-3h8v3H4z"/></svg>
+        <button type="button" class="btn-run" id="btn-save-cfg" data-action="saveConfig" style="margin-top:0;padding:13px">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4.5a.5.5 0 0 0-.146-.354l-3-3A.5.5 0 0 0 11.5 1H2zm3 4a1 1 0 0 1 1-1h4a1 1 0 0 1 0 2H6a1 1 0 0 1-1-1zm-1 7v-3h8v3H4z"/></svg>
           Guardar configuración
         </button>
-        <p class="save-feedback hidden" id="save-feedback">Configuración guardada</p>
       </div>
     </div>
   </div>
 
   <!-- ── Code Preview Modal ── -->
-  <div class="modal-overlay hidden" id="code-overlay" onclick="closeCodePreviewOutside(event)">
-    <div class="modal modal-code" onclick="event.stopPropagation()">
+  <div class="modal-overlay hidden" id="code-overlay">
+    <div class="modal modal-code" role="dialog" aria-modal="true" aria-labelledby="code-modal-name">
       <div class="modal-header">
         <span class="modal-title">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
           <span id="code-modal-name">Código</span>
         </span>
-        <button class="modal-close" onclick="closeCodePreview()">✕</button>
+        <button type="button" class="modal-close" data-action="closeCodePreview" aria-label="Cerrar vista de código">✕</button>
       </div>
       <div class="modal-body" style="gap:12px">
         <div class="code-toolbar">
           <span class="code-meta" id="code-modal-meta"></span>
           <span class="run-lang-badge hidden" id="run-lang-badge"></span>
-          <button class="code-copy" id="code-copy-btn" onclick="copyPreviewCode()">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5H6z"/><path d="M2 5a2 2 0 0 1 2-2v1.5A.5.5 0 0 0 3.5 5v9a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5H12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/></svg>
+          <button type="button" class="code-copy" id="code-copy-btn" data-action="copyPreviewCode">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5H6z"/><path d="M2 5a2 2 0 0 1 2-2v1.5A.5.5 0 0 0 3.5 5v9a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5H12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/></svg>
             Copiar
           </button>
         </div>
-        <pre class="code-view" id="code-modal-body"></pre>
+        <pre class="code-view" id="code-modal-body" tabindex="0"></pre>
 
         <div class="run-toolbar" id="run-toolbar">
-          <button class="run-btn" id="run-code-btn" onclick="runPreviewCode()">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <button type="button" class="run-btn" id="run-code-btn" data-action="runPreviewCode">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
             Ejecutar
           </button>
-          <button class="stop-btn hidden" id="stop-code-btn" onclick="stopPreviewCode()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg>
+          <button type="button" class="stop-btn hidden" id="stop-code-btn" data-action="stopPreviewCode">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="6" width="12" height="12"/></svg>
             Detener
           </button>
         </div>
@@ -172,11 +171,12 @@
           </div>
           <pre class="console-out" id="console-out"></pre>
           <div class="console-input-row">
-            <span class="prompt-caret">&gt;</span>
+            <span class="prompt-caret" aria-hidden="true">&gt;</span>
             <input class="console-input" id="console-input" type="text" autocomplete="off" spellcheck="false"
+                   aria-label="Entrada del programa"
                    placeholder="Escribe aquí si el programa pide datos y presiona Enter…" disabled
-                   onkeydown="if(event.key==='Enter') sendConsoleInput()">
-            <button class="console-send-btn" id="console-send-btn" onclick="sendConsoleInput()" disabled>Enviar ⏎</button>
+                   data-on-keydown="consoleKeydown">
+            <button type="button" class="console-send-btn" id="console-send-btn" data-action="sendConsoleInput" disabled>Enviar ⏎</button>
           </div>
         </div>
       </div>
@@ -184,17 +184,17 @@
   </div>
 
   <!-- ── Plagiarism diff modal ── -->
-  <div class="modal-overlay hidden" id="diff-overlay" onclick="closeDiffOutside(event)">
-    <div class="modal modal-diff" onclick="event.stopPropagation()">
+  <div class="modal-overlay hidden" id="diff-overlay">
+    <div class="modal modal-diff" role="dialog" aria-modal="true" aria-labelledby="diff-title">
       <div class="modal-header">
-        <span class="modal-title">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--yellow)"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span class="modal-title" id="diff-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--yellow)" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           Comparación de código
         </span>
         <div class="diff-meta">
           <span id="diff-sim-label" class="diff-sim-badge"></span>
         </div>
-        <button class="modal-close" onclick="closeDiff()">&#x2715;</button>
+        <button type="button" class="modal-close" data-action="closeDiff" aria-label="Cerrar comparación">&#x2715;</button>
       </div>
       <div class="diff-panes">
         <div class="diff-pane">
@@ -202,7 +202,7 @@
             <span class="diff-avatar" id="diff-av-a"></span>
             <span id="diff-name-a">Estudiante A</span>
           </div>
-          <pre class="code-view" id="diff-code-a"></pre>
+          <pre class="code-view" id="diff-code-a" tabindex="0"></pre>
         </div>
         <div class="diff-divider"></div>
         <div class="diff-pane">
@@ -210,48 +210,49 @@
             <span class="diff-avatar" id="diff-av-b"></span>
             <span id="diff-name-b">Estudiante B</span>
           </div>
-          <pre class="code-view" id="diff-code-b"></pre>
+          <pre class="code-view" id="diff-code-b" tabindex="0"></pre>
         </div>
       </div>
     </div>
   </div>
 
   <!-- ── Campus Virtual export modal ── -->
-  <div class="modal-overlay hidden" id="campus-overlay" onclick="closeCampusOutside(event)">
-    <div class="modal" onclick="event.stopPropagation()" style="max-width:440px">
+  <div class="modal-overlay hidden" id="campus-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="campus-title" style="max-width:440px">
       <div class="modal-header">
-        <span class="modal-title">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span class="modal-title" id="campus-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
           Exportar al Campus Virtual
         </span>
-        <button class="modal-close" onclick="closeCampus()">✕</button>
+        <button type="button" class="modal-close" data-action="closeCampus" aria-label="Cerrar exportación">✕</button>
       </div>
       <div class="modal-body">
         <div class="settings-section">
-          <label class="field-label">Nombre del ítem de calificación en el Campus</label>
+          <label class="field-label" for="campus-item">Nombre del ítem de calificación en el Campus</label>
           <input class="select-input" id="campus-item" type="text" placeholder="Ej. Taller 05" autocomplete="off" />
           <p class="field-hint" style="margin-top:6px">Debe coincidir exactamente con el nombre del ítem en el libro de calificaciones (D2L). Se genera una columna «&lt;ítem&gt; Points Grade».</p>
           <p class="field-hint" id="campus-course-hint" style="margin-top:8px"></p>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-run" id="btn-campus-dl" onclick="confirmCampusDownload()" style="margin-top:0;padding:13px">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-5-5h3V2h4v5h3l-5 5zM2 14h12v-1H2v1z"/></svg>
+        <button type="button" class="btn-run" id="btn-campus-dl" data-action="confirmCampusDownload" style="margin-top:0;padding:13px">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 12l-5-5h3V2h4v5h3l-5 5zM2 14h12v-1H2v1z"/></svg>
           Descargar CSV de importación
         </button>
-        <p class="save-feedback hidden" id="campus-feedback"></p>
+        <p class="save-feedback hidden" id="campus-feedback" role="status"></p>
       </div>
     </div>
   </div>
 
-  <div class="modal-overlay hidden" id="history-overlay" onclick="closeHistoryOutside(event)">
-    <div class="modal" onclick="event.stopPropagation()" style="max-width:520px">
+  <!-- ── History modal ── -->
+  <div class="modal-overlay hidden" id="history-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="history-title" style="max-width:520px">
       <div class="modal-header">
-        <span class="modal-title">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span class="modal-title" id="history-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--p3)" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
           Mi historial de calificaciones
         </span>
-        <button class="modal-close" onclick="closeHistory()">✕</button>
+        <button type="button" class="modal-close" data-action="closeHistory" aria-label="Cerrar historial">✕</button>
       </div>
       <div class="modal-body">
         <p class="field-hint" style="margin:0">Guardamos tus últimas 10 calificaciones tal como quedaron (notas, comentarios y código). Puedes retomarlas desde cualquier navegador o computador.</p>
@@ -263,15 +264,15 @@
   <!-- ── Header ── -->
   <header>
     <div class="logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg>
     </div>
     <span class="header-title">Academic Pregrader</span>
     <div class="header-divider"></div>
     <span class="header-sub">Pre-calificador académico</span>
     {% if is_admin %}
     <div class="header-course-picker" title="Curso que estás calificando">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-      <select id="course-picker" onchange="selectCourse(this.value)" aria-label="Curso a calificar">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <select id="course-picker" data-on-change="selectCourse" aria-label="Curso a calificar">
         <option value="">— Elige curso —</option>
         {% for c in courses %}
         <option value="{{ c.id }}" {% if c.id == active_course_id %}selected{% endif %}>{{ c.name }}</option>
@@ -280,37 +281,37 @@
     </div>
     {% elif active_course %}
     <span class="header-course" title="Curso activo asignado por el administrador">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       {{ active_course }}
     </span>
     {% endif %}
     <div class="header-spacer"></div>
-    <button class="btn-gear btn-icon" id="theme-toggle" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema">
-      <svg class="ic-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-      <svg class="ic-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    <button type="button" class="btn-gear btn-icon" id="theme-toggle" data-action="toggleTheme" title="Cambiar tema" aria-label="Cambiar tema">
+      <svg class="ic-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+      <svg class="ic-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
-    <button class="btn-gear" onclick="openHistory()">
-      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+    <button type="button" class="btn-gear" data-action="openHistory">
+      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M10 2a8 8 0 100 16 8 8 0 000-16zM4.5 10a5.5 5.5 0 1111 0 5.5 5.5 0 01-11 0zM10 6a.75.75 0 01.75.75v3l2.25 1.3a.75.75 0 11-.75 1.3l-2.63-1.52A.75.75 0 019.25 10V6.75A.75.75 0 0110 6z" clip-rule="evenodd"/>
       </svg>
       Historial
     </button>
-    <button class="btn-gear" onclick="openSettings()">
-      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+    <button type="button" class="btn-gear" data-action="openSettings">
+      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
       </svg>
       Configuración
     </button>
     {% if is_admin %}
     <a class="btn-gear" href="/admin" title="Panel de administración" style="text-decoration:none;">
-      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M10 1l7 3v5c0 4.4-3 8.5-7 10-4-1.5-7-5.6-7-10V4l7-3zm0 2.2L5 5.3V9c0 3.3 2.1 6.4 5 7.8 2.9-1.4 5-4.5 5-7.8V5.3l-5-2.1z" clip-rule="evenodd"/>
       </svg>
       Admin
     </a>
     {% endif %}
     <a class="btn-gear" href="/logout" title="Cerrar sesión" style="text-decoration:none;">
-      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+      <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h6a1 1 0 011 1v1a1 1 0 11-2 0V4H5v12h4v-1a1 1 0 112 0v1a1 1 0 01-1 1H4a1 1 0 01-1-1V3z" clip-rule="evenodd"/>
         <path fill-rule="evenodd" d="M13.293 6.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L14.586 11H8a1 1 0 110-2h6.586l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
       </svg>
@@ -332,26 +333,26 @@
       <div class="upload-grid">
         <div class="enunciado-cell">
           <div class="enunciado-modes">
-            <button type="button" class="enunciado-mode-btn active" id="mode-btn-pdf" onclick="setEnunciadoMode('pdf')">Subir PDF</button>
-            <button type="button" class="enunciado-mode-btn" id="mode-btn-text" onclick="setEnunciadoMode('text')">Escribir texto</button>
+            <button type="button" class="enunciado-mode-btn active" id="mode-btn-pdf" data-action="setEnunciadoMode" data-arg="pdf">1 · Subir PDF</button>
+            <button type="button" class="enunciado-mode-btn" id="mode-btn-text" data-action="setEnunciadoMode" data-arg="text">1 · Escribir texto</button>
           </div>
-          <div class="upload-zone" id="drop-pdf" ondragover="onDragOver(event,'drop-pdf')" ondragleave="onDragLeave('drop-pdf')" ondrop="onDrop(event,'pdf')">
-            <input type="file" id="file-pdf" name="pdf_file" accept="application/pdf,.pdf" multiple="multiple" onchange="onFileSelect('pdf', this)">
-            <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h6"/></svg></div>
+          <div class="upload-zone" id="drop-pdf" data-zone="drop-pdf" data-type="pdf" data-on-dragover="dragOver" data-on-dragleave="dragLeave" data-on-drop="drop">
+            <input type="file" id="file-pdf" name="pdf_file" accept="application/pdf,.pdf" multiple="multiple" data-on-change="fileSelect" data-type="pdf" aria-label="Enunciado en PDF">
+            <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h6"/></svg></div>
             <div class="upload-type">Enunciado (PDF)</div>
             <div class="upload-hint">Arrastra o haz clic<br>Usa ⌘ o Shift para elegir varios PDFs</div>
             <div class="upload-filename" id="pdf-filename"></div>
             <div class="upload-change">Clic para agregar más</div>
           </div>
           <div class="upload-zone upload-zone--text hidden" id="drop-text">
-            <textarea class="enunciado-textarea" id="enunciado-text" placeholder="Escribe o pega aquí el enunciado del ejercicio…" oninput="onEnunciadoTextInput()"></textarea>
+            <textarea class="enunciado-textarea" id="enunciado-text" aria-label="Enunciado del ejercicio" placeholder="Escribe o pega aquí el enunciado del ejercicio…" data-on-input="onEnunciadoTextInput"></textarea>
           </div>
         </div>
         <div class="enunciado-cell">
-          <div class="cell-label">Entregas de los estudiantes</div>
-          <div class="upload-zone" id="drop-zip" ondragover="onDragOver(event,'drop-zip')" ondragleave="onDragLeave('drop-zip')" ondrop="onDrop(event,'zip')">
-            <input type="file" id="file-zip" accept=".zip" onchange="onFileSelect('zip', this)">
-            <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8"/><rect x="2" y="4" width="20" height="4" rx="1"/><path d="M10 12h4"/></svg></div>
+          <div class="cell-label">2 · Entregas de los estudiantes</div>
+          <div class="upload-zone" id="drop-zip" data-zone="drop-zip" data-type="zip" data-on-dragover="dragOver" data-on-dragleave="dragLeave" data-on-drop="drop">
+            <input type="file" id="file-zip" accept=".zip" data-on-change="fileSelect" data-type="zip" aria-label="Entregas en ZIP">
+            <div class="upload-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8"/><rect x="2" y="4" width="20" height="4" rx="1"/><path d="M10 12h4"/></svg></div>
             <div class="upload-type">Entregas (.zip)</div>
             <div class="upload-hint">Arrastra o haz clic<br>Campus Virtual — carpetas por alumno</div>
             <div class="upload-filename" id="zip-filename"></div>
@@ -360,22 +361,29 @@
         </div>
       </div>
       <div class="extra-notes-wrap">
-        <button class="extra-notes-toggle" id="extra-notes-toggle" onclick="toggleExtraNotes()" type="button">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <button type="button" class="extra-notes-toggle" id="extra-notes-toggle" data-action="toggleExtraNotes" aria-expanded="false" aria-controls="extra-notes-body">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Indicaciones adicionales para la IA
           <span class="extra-notes-opt">(opcional)</span>
           <span class="en-dot"></span>
-          <svg class="en-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <svg class="en-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="extra-notes-body" id="extra-notes-body">
           <textarea class="extra-notes-input" id="extra-notes" rows="2"
-            oninput="updateExtraNotesDot()"
+            data-on-input="updateExtraNotesDot" aria-label="Indicaciones adicionales para la IA"
             placeholder="Aspectos adicionales que la IA debe tener en cuenta al evaluar…"></textarea>
         </div>
       </div>
-      <button class="btn-run" id="btn-run" onclick="runPregrader()" disabled>
-        <svg width="13" height="13" viewBox="0 0 15 15" fill="currentColor"><path d="M3 2.5l9 5-9 5V2.5z"/></svg>
-        Iniciar Calificación
+      <div class="run-panel">
+        <ul class="run-checklist" id="run-checklist" aria-label="Requisitos para calificar">
+          <li class="req" id="req-enunciado"><span class="req-mark" aria-hidden="true"></span>Enunciado</li>
+          <li class="req" id="req-zip"><span class="req-mark" aria-hidden="true"></span>Entregas (.zip)</li>
+        </ul>
+        <p class="run-hint" id="run-hint" role="status"></p>
+      </div>
+      <button type="button" class="btn-run" id="btn-run" data-action="runPregrader" disabled>
+        <svg width="13" height="13" viewBox="0 0 15 15" fill="currentColor" aria-hidden="true"><path d="M3 2.5l9 5-9 5V2.5z"/></svg>
+        Iniciar calificación
       </button>
     </div>
     </div>
@@ -388,70 +396,77 @@
       </div>
       <div class="status-bar">
         <div class="status-dot running" id="status-dot"></div>
-        <span class="status-text" id="status-text">Iniciando proceso...</span>
+        <span class="status-text" id="status-text" role="status">Iniciando proceso...</span>
       </div>
       <div class="live-board hidden" id="live-board">
-        <div class="live-prog-wrap"><div class="live-prog-fill" id="live-prog-fill"></div></div>
-        <div class="live-prog-text" id="live-prog-text">Detectando estudiantes...</div>
+        <div class="live-prog-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="live-prog-bar"><div class="live-prog-fill" id="live-prog-fill"></div></div>
+        <div class="live-prog-row">
+          <span class="live-prog-text" id="live-prog-text">Detectando estudiantes...</span>
+          <span class="live-prog-eta" id="live-prog-eta"></span>
+        </div>
         <div class="chips-container" id="chips-container"></div>
       </div>
       <div class="log-header">
         <span class="log-label">Log de proceso</span>
-        <button class="log-toggle" onclick="toggleLog()">Ver log</button>
+        <button type="button" class="log-toggle" data-action="toggleLog" aria-expanded="false">Ver log</button>
       </div>
       <div class="log-wrap" id="log-output" style="display:none"><span class="log-empty">Esperando salida...</span></div>
-      <button class="btn-cancel hidden" id="btn-cancel" onclick="stopJob()">
-        <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l12 12M13 1L1 13"/></svg>
-        Cancelar calificación
+      <button type="button" class="btn-cancel hidden" id="btn-cancel" data-action="stopJob">
+        <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M1 1l12 12M13 1L1 13"/></svg>
+        <span id="btn-cancel-label">Cancelar calificación</span>
       </button>
     </div>
 
     <!-- Results card -->
-    <div class="card hidden" id="results-card">
+    <div class="card card--results hidden" id="results-card">
       <div class="card-header">
         <span class="card-title">Resultados finales</span>
         <span class="status-badge done" id="results-count" style="margin-left:auto"></span>
       </div>
       <div class="stats-row" id="stats-row"></div>
-      <div class="results-controls">
+      <div class="results-controls" id="results-controls">
         <div class="results-top">
           <span class="results-sublabel">Calificaciones individuales</span>
           <div class="dl-btns">
-            <button class="btn-dl-secondary" onclick="downloadExcel()">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M14 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zM5.5 11 3 7h1.5l1.5 2.5L7.5 7H9L6.5 11H5.5zm5 0-2.5-4H9.5L11 9.5 12.5 7H14l-2.5 4H10.5z"/></svg>
+            <button type="button" class="btn-dl-secondary" data-action="downloadExcel">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 2H2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1zM5.5 11 3 7h1.5l1.5 2.5L7.5 7H9L6.5 11H5.5zm5 0-2.5-4H9.5L11 9.5 12.5 7H14l-2.5 4H10.5z"/></svg>
               Excel
             </button>
-            <button class="btn-dl-secondary" id="btn-campus" onclick="downloadCampus()" title="Exportar en formato de importación del Campus Virtual (D2L)" style="display:none">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            <button type="button" class="btn-dl-secondary" id="btn-campus" data-action="downloadCampus" title="Exportar en formato de importación del Campus Virtual (D2L)" style="display:none">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
               Campus Virtual
             </button>
-            <button class="btn-dl-primary" onclick="downloadCSV()">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-5-5h3V2h4v5h3l-5 5zM2 14h12v-1H2v1z"/></svg>
+            <button type="button" class="btn-dl-primary" data-action="downloadCSV">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 12l-5-5h3V2h4v5h3l-5 5zM2 14h12v-1H2v1z"/></svg>
               CSV
             </button>
           </div>
         </div>
-        <div class="search-bar">
-          <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="student-search-input" id="student-search-input" type="text" placeholder="Buscar estudiante..." autocomplete="off" oninput="onStudentSearchInput(this.value)" />
-          <button class="search-clear-btn hidden" id="search-clear-btn" onclick="clearStudentSearch()" title="Limpiar búsqueda">&#x2715;</button>
-        </div>
-        <div class="sort-bar">
-          <span class="bar-label">Ordenar</span>
-          <button class="sort-btn active" data-sort="apellido" onclick="sortResults('apellido')">Apellido A→Z</button>
-          <button class="sort-btn"        data-sort="desc"   onclick="sortResults('desc')">Nota ↓</button>
-          <button class="sort-btn"        data-sort="asc"    onclick="sortResults('asc')">Nota ↑</button>
-          <button class="sort-btn"        data-sort="az"     onclick="sortResults('az')">Nombre A→Z</button>
-          <button class="sort-btn"        data-sort="plagio" onclick="sortResults('plagio')">Plagio primero</button>
-        </div>
-        <div class="filter-bar">
-          <span class="bar-label">Filtrar</span>
-          <button class="filter-pill" data-filter="plagio"    onclick="toggleFilter('plagio')">Con plagio</button>
-          <button class="filter-pill" data-filter="nocompila" onclick="toggleFilter('nocompila')">No compila</button>
-          <button class="filter-pill" data-filter="baja"      onclick="toggleFilter('baja')">Nota &lt; 3.0</button>
+        <div class="results-tools">
+          <div class="search-bar">
+            <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input class="student-search-input" id="student-search-input" type="search" placeholder="Buscar estudiante..." aria-label="Buscar estudiante" autocomplete="off" data-on-input="studentSearch" />
+            <button type="button" class="search-clear-btn hidden" id="search-clear-btn" data-action="clearStudentSearch" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">&#x2715;</button>
+          </div>
+          <div class="sort-bar" role="group" aria-label="Ordenar">
+            <span class="bar-label">Ordenar</span>
+            <button type="button" class="sort-btn active" data-sort="apellido" data-action="sortResults" data-arg="apellido">Apellido A→Z</button>
+            <button type="button" class="sort-btn"        data-sort="desc"     data-action="sortResults" data-arg="desc">Nota ↓</button>
+            <button type="button" class="sort-btn"        data-sort="asc"      data-action="sortResults" data-arg="asc">Nota ↑</button>
+            <button type="button" class="sort-btn"        data-sort="az"       data-action="sortResults" data-arg="az">Nombre A→Z</button>
+            <button type="button" class="sort-btn"        data-sort="plagio"   data-action="sortResults" data-arg="plagio">Plagio primero</button>
+          </div>
+          <div class="filter-bar" role="group" aria-label="Filtrar">
+            <span class="bar-label">Filtrar</span>
+            <button type="button" class="filter-pill" data-filter="plagio"    data-action="toggleFilter" data-arg="plagio" aria-pressed="false">Con plagio</button>
+            <button type="button" class="filter-pill" data-filter="nocompila" data-action="toggleFilter" data-arg="nocompila" aria-pressed="false">No compila</button>
+            <button type="button" class="filter-pill" data-filter="baja"      data-action="toggleFilter" data-arg="baja" aria-pressed="false">Nota &lt; 3.0</button>
+          </div>
         </div>
       </div>
       <div class="students-grid" id="students-grid"></div>
+      <p class="results-empty hidden" id="results-empty">Ningún estudiante coincide con la búsqueda o los filtros.
+        <button type="button" class="results-empty-btn" data-action="resetResultsView">Quitar filtros</button></p>
     </div>
 
   </main>
@@ -462,6 +477,9 @@
     <span>© 2026 Nicolás D. — Todos los derechos reservados</span>
   </footer>
 
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
+
+  <script src="{{ url_for('static', filename='js/ui.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/index.js') }}" defer></script>
 </body>
 </html>

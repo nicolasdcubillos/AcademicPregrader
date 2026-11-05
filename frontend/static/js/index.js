@@ -10,6 +10,7 @@ let _previewCodes     = [];
 let _resultSeq        = 0;
 let _lastRendered     = [];
 let _syncTimer        = null;
+let _gradingStartedAt = 0;
 
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
@@ -145,10 +146,9 @@ async function loadConfig() {
   } catch (e) { console.warn('Config load failed:', e); }
 }
 
-async function saveConfig() {
+async function saveConfig(silent = false) {
   const btn = document.getElementById('btn-save-cfg');
-  const fb  = document.getElementById('save-feedback');
-  btn.disabled = true; fb.classList.add('hidden');
+  btn.disabled = true;
   const payload = {
     submission_language: document.getElementById('cfg-language').value,
     enable_compilation:  document.getElementById('cfg-compilation').checked,
@@ -162,8 +162,12 @@ async function saveConfig() {
   };
   try {
     const res = await fetch('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    if (res.ok) { fb.classList.remove('hidden'); setTimeout(() => fb.classList.add('hidden'), 3000); }
-  } catch (e) { console.error(e); }
+    if (res.ok) { if (!silent) UI.toast('Configuración guardada', { type: 'success' }); }
+    else UI.toast('No se pudo guardar la configuración.', { type: 'error' });
+  } catch (e) {
+    console.error(e);
+    UI.toast('Error de red al guardar la configuración.', { type: 'error' });
+  }
   btn.disabled = false;
 }
 
@@ -172,8 +176,6 @@ function syncThresholdRange(v) { document.getElementById('cfg-threshold-range').
 
 function openSettings()  { document.getElementById('settings-overlay').classList.remove('hidden'); }
 function closeSettings() { document.getElementById('settings-overlay').classList.add('hidden'); }
-function closeSettingsOutside(e) { if (e.target === document.getElementById('settings-overlay')) closeSettings(); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettings(); closeCodePreview(); closeCampus(); closeDiff(); closeHistory(); } });
 
 // ── Historial de calificaciones ──
 async function openHistory() {
@@ -189,7 +191,6 @@ async function openHistory() {
   }
 }
 function closeHistory() { document.getElementById('history-overlay')?.classList.add('hidden'); }
-function closeHistoryOutside(e) { if (e.target === e.currentTarget) closeHistory(); }
 
 function fmtHistDate(s) {
   if (!s) return '';
@@ -210,7 +211,7 @@ function renderHistoryList(items) {
         <span class="hist-item-label" title="${esc(it.label || 'Calificación')}">${esc(it.label || 'Calificación')}</span>
         <span class="hist-item-meta">${fmtHistDate(it.updated_at || it.created_at)} · ${it.student_count} estudiante(s)</span>
       </div>
-      <button class="hist-open-btn" onclick="resumeHistory('${it.job_id}')">Retomar</button>
+      <button type="button" class="hist-open-btn" data-action="resumeHistory" data-arg="${esc(it.job_id)}">Retomar</button>
     </div>
   `).join('');
 }
@@ -218,7 +219,7 @@ function renderHistoryList(items) {
 async function resumeHistory(jobId) {
   try {
     const res = await fetch(`/history/${jobId}`);
-    if (!res.ok) { alert('No se pudo cargar esa calificación.'); return; }
+    if (!res.ok) { UI.toast('No se pudo cargar esa calificación.', { type: 'error' }); return; }
     const item = await res.json();
     closeHistory();
 
@@ -242,7 +243,7 @@ async function resumeHistory(jobId) {
     appendLog(`Historial cargado: "${item.label || jobId}" — ${liveResults.length} estudiante(s).`);
     showResultsCard();
   } catch (e) {
-    alert('Error de red al cargar el historial.');
+    UI.toast('Error de red al cargar el historial.', { type: 'error' });
   }
 }
 
@@ -318,9 +319,19 @@ function updateRunButton() {
   const enunciadoReady = enunciadoMode === 'text'
     ? document.getElementById('enunciado-text').value.trim().length > 0
     : _files.pdf.length > 0;
-  const both = !!(_files.zip && enunciadoReady);
+  const zipReady = !!_files.zip;
+  const both = zipReady && enunciadoReady;
   btn.disabled = !both;
   btn.classList.toggle('ready', both);
+
+  document.getElementById('req-enunciado').classList.toggle('done', enunciadoReady);
+  document.getElementById('req-zip').classList.toggle('done', zipReady);
+  const missing = [];
+  if (!enunciadoReady) missing.push(enunciadoMode === 'text' ? 'escribe el enunciado' : 'sube el enunciado en PDF');
+  if (!zipReady) missing.push('sube el ZIP de entregas');
+  const hint = document.getElementById('run-hint');
+  hint.textContent = both ? 'Todo listo. Puedes iniciar la calificación.' : `Para continuar: ${missing.join(' y ')}.`;
+  hint.classList.toggle('ready', both);
 }
 
 function onDragOver(e, zoneId) { e.preventDefault(); document.getElementById(zoneId).classList.add('drag-over'); }
@@ -353,16 +364,37 @@ function setRunning(running) {
   const btn = document.getElementById('btn-run');
   btn.innerHTML = running
     ? '<div class="spinner"></div> Calificando...'
-    : '<svg width="13" height="13" viewBox="0 0 15 15" fill="currentColor"><path d="M3 2.5l9 5-9 5V2.5z"/></svg> Iniciar Calificación';
+    : '<svg width="13" height="13" viewBox="0 0 15 15" fill="currentColor" aria-hidden="true"><path d="M3 2.5l9 5-9 5V2.5z"/></svg> Iniciar calificación';
   if (running) { btn.disabled = true; btn.classList.remove('ready'); }
   else { updateRunButton(); }
-  document.getElementById('btn-cancel').classList.toggle('hidden', !running);
+  const cancel = document.getElementById('btn-cancel');
+  cancel.classList.toggle('hidden', !running);
+  if (running) resetCancelButton();
+}
+
+let _cancelArmTimer = null;
+
+function resetCancelButton() {
+  clearTimeout(_cancelArmTimer);
+  const btn = document.getElementById('btn-cancel');
+  btn.disabled = false;
+  btn.classList.remove('armed');
+  document.getElementById('btn-cancel-label').textContent = 'Cancelar calificación';
 }
 
 async function stopJob() {
   if (!currentJobId) return;
   const btn = document.getElementById('btn-cancel');
-  btn.disabled = true; btn.textContent = 'Deteniendo...';
+  if (!btn.classList.contains('armed')) {
+    btn.classList.add('armed');
+    document.getElementById('btn-cancel-label').textContent =
+      completedStudents ? `Confirmar: se conservan ${completedStudents} ya calificados` : 'Confirmar cancelación';
+    _cancelArmTimer = setTimeout(resetCancelButton, 5000);
+    return;
+  }
+  clearTimeout(_cancelArmTimer);
+  btn.disabled = true;
+  document.getElementById('btn-cancel-label').textContent = 'Deteniendo...';
   try { await fetch(`/stop/${currentJobId}`, { method: 'POST' }); } catch(e) { console.error(e); }
 }
 
@@ -371,11 +403,12 @@ async function runPregrader() {
   if (enunciadoMode === 'text') {
     if (!document.getElementById('enunciado-text').value.trim()) { flashZone('drop-text'); return; }
   } else if (!_files.pdf.length) { flashZone('drop-pdf'); return; }
-  await saveConfig();
+  await saveConfig(true);
 
   document.getElementById('log-output').innerHTML = '<span class="log-empty">Esperando salida...</span>';
   document.getElementById('log-output').style.display = 'none';
-  document.querySelector('.log-toggle').textContent = 'Ver log';
+  const logToggle = document.querySelector('.log-toggle');
+  logToggle.textContent = 'Ver log'; logToggle.setAttribute('aria-expanded', 'false');
   logVisible = false;
   document.getElementById('landing').classList.add('landing--flow');
   document.getElementById('progress-card').classList.remove('hidden');
@@ -383,6 +416,8 @@ async function runPregrader() {
   document.getElementById('chips-container').innerHTML = '';
   document.getElementById('live-prog-fill').style.width = '0%';
   document.getElementById('live-prog-text').textContent = 'Detectando estudiantes...';
+  document.getElementById('live-prog-eta').textContent = '';
+  _gradingStartedAt = 0;
   liveResults = []; totalStudents = 0; completedStudents = 0;
   activeFilters = new Set(); currentSort = 'apellido'; studentSearchQuery = '';
   const searchInput = document.getElementById('student-search-input');
@@ -433,18 +468,36 @@ async function runPregrader() {
       es.close(); setRunning(false); setStatusDot('done');
       setStatusText('¡Evaluación completada!'); setStatusBadge('Completado','done');
       appendLog(''); appendLog(`${msg.count || liveResults.length} estudiante(s) evaluado(s).`);
+      document.getElementById('live-prog-eta').textContent = '';
+      UI.toast(`Calificación completada: ${msg.count || liveResults.length} estudiante(s).`, { type: 'success' });
       showResultsCard();
     } else if (msg.type === 'error') {
       es.close(); setRunning(false); setStatusDot('error');
       setStatusText('Error durante la evaluación'); setStatusBadge('Error','error');
       appendLog('[ERROR] ' + msg.data);
+      UI.toast('Ocurrió un error durante la evaluación. Revisa el log.', { type: 'error', duration: 8000 });
     } else if (msg.type === 'cancelled') {
       es.close(); setRunning(false); setStatusDot('error');
       setStatusText('Calificación cancelada'); setStatusBadge('Cancelado','error');
       appendLog(''); appendLog('Proceso detenido manualmente.');
+      document.getElementById('live-prog-eta').textContent = '';
+      if (liveResults.length) {
+        UI.toast(`Cancelado. Conservamos ${liveResults.length} de ${totalStudents} resultados.`, { type: 'info', duration: 7000 });
+        showResultsCard();
+      } else {
+        UI.toast('Calificación cancelada.', { type: 'info' });
+      }
     }
   };
-  es.onerror = () => { es.close(); setRunning(false); };
+  es.onerror = () => {
+    es.close();
+    if (!document.getElementById('btn-cancel').classList.contains('hidden')) {
+      UI.toast('Se perdió la conexión con el servidor. Los resultados ya calificados se conservan.', { type: 'error', duration: 8000 });
+      setStatusText('Conexión perdida'); setStatusDot('error'); setStatusBadge('Interrumpido', 'error');
+      if (liveResults.length) showResultsCard();
+    }
+    setRunning(false);
+  };
 }
 
 function toggleLog() {
@@ -453,6 +506,7 @@ function toggleLog() {
   logVisible = !logVisible;
   log.style.display = logVisible ? '' : 'none';
   btn.textContent   = logVisible ? 'Ocultar log' : 'Ver log';
+  btn.setAttribute('aria-expanded', String(logVisible));
 }
 
 function truncName(n, max) { return n.length <= max ? n : n.slice(0, max-1) + '…'; }
@@ -463,6 +517,7 @@ function gradeChipClass(n) {
 
 function initLiveBoard(students) {
   totalStudents = students.length; completedStudents = 0;
+  _gradingStartedAt = Date.now();
   const container = document.getElementById('chips-container');
   container.innerHTML = '';
   students.forEach(name => {
@@ -494,19 +549,39 @@ function handleStudentResult(data) {
 function updateLiveProgress() {
   const pct = totalStudents > 0 ? (completedStudents / totalStudents * 100) : 0;
   document.getElementById('live-prog-fill').style.width = pct.toFixed(1) + '%';
-  document.getElementById('live-prog-text').textContent =
-    `${completedStudents} / ${totalStudents} estudiante${totalStudents !== 1 ? 's' : ''} calificado${totalStudents !== 1 ? 's' : ''}`;
+  document.getElementById('live-prog-bar').setAttribute('aria-valuenow', Math.round(pct));
+  const remaining = totalStudents - completedStudents;
+  document.getElementById('live-prog-text').textContent = remaining > 0
+    ? `Calificando estudiante ${completedStudents + 1} de ${totalStudents} · ${completedStudents} listo${completedStudents !== 1 ? 's' : ''}`
+    : `${completedStudents} de ${totalStudents} estudiantes calificados`;
+  document.getElementById('live-prog-eta').textContent = estimateRemaining(remaining);
+}
+
+function estimateRemaining(remaining) {
+  if (!_gradingStartedAt || completedStudents < 2 || remaining <= 0) return '';
+  const perStudent = (Date.now() - _gradingStartedAt) / completedStudents;
+  const secs = Math.round(perStudent * remaining / 1000);
+  if (secs < 60) return `~${Math.max(secs, 5)} s restantes`;
+  return `~${Math.round(secs / 60)} min restantes`;
 }
 
 function showResultsCard() {
   if (liveResults.length === 0) return;
-  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+  syncFilterButtons();
   document.querySelectorAll('.sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === 'apellido'));
-  currentSort = 'apellido'; activeFilters = new Set();
+  currentSort = 'apellido'; activeFilters = new Set(); syncFilterButtons();
   applyFiltersAndSort();
   const card = document.getElementById('results-card');
   card.classList.remove('hidden','fade-in'); void card.offsetWidth; card.classList.add('fade-in');
   setTimeout(() => card.scrollIntoView({ behavior:'smooth', block:'start' }), 140);
+}
+
+function syncFilterButtons() {
+  document.querySelectorAll('.filter-pill').forEach(p => {
+    const on = activeFilters.has(p.dataset.filter);
+    p.classList.toggle('active', on);
+    p.setAttribute('aria-pressed', String(on));
+  });
 }
 
 function sortResults(mode) {
@@ -517,7 +592,17 @@ function sortResults(mode) {
 
 function toggleFilter(flag) {
   if (activeFilters.has(flag)) activeFilters.delete(flag); else activeFilters.add(flag);
-  document.querySelectorAll('.filter-pill').forEach(p => p.classList.toggle('active', activeFilters.has(p.dataset.filter)));
+  syncFilterButtons();
+  applyFiltersAndSort();
+}
+
+function resetResultsView() {
+  activeFilters = new Set();
+  syncFilterButtons();
+  const input = document.getElementById('student-search-input');
+  input.value = '';
+  studentSearchQuery = '';
+  document.getElementById('search-clear-btn').classList.add('hidden');
   applyFiltersAndSort();
 }
 
@@ -569,6 +654,7 @@ function renderCardsFromResults(results) {
   grid.innerHTML = '';
   _previewCodes = [];
   results.forEach((res, ri) => grid.appendChild(buildStudentCard(res, ri)));
+  document.getElementById('results-empty').classList.toggle('hidden', results.length > 0);
 }
 
 function computeStats(results) {
@@ -585,12 +671,12 @@ function renderStatsRow(results) {
   const { count, avgNota, compileCount, plagioCount } = computeStats(results);
   document.getElementById('results-count').textContent = `${count} estudiante${count!==1?'s':''}`;
   document.getElementById('stats-row').innerHTML = [
-    { val: avgNota, label: 'Promedio', color: 'linear-gradient(135deg,var(--p1),var(--p3))' },
-    { val: `${compileCount}/${count}`, label: 'Compilan', color: 'linear-gradient(135deg,#059669,var(--green))' },
-    { val: plagioCount, label: 'Posible plagio', color: 'linear-gradient(135deg,#b91c1c,var(--red))' },
+    { val: avgNota, label: 'Promedio', cls: '' },
+    { val: `${compileCount}/${count}`, label: 'Compilan', cls: '' },
+    { val: plagioCount, label: 'Posible plagio', cls: plagioCount > 0 ? 'warn' : '' },
   ].map(s =>
     `<div class="stat-item">
-      <div class="stat-value" style="background:${s.color};-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">${s.val}</div>
+      <div class="stat-value ${s.cls}">${s.val}</div>
       <div class="stat-label">${s.label}</div>
     </div>`
   ).join('');
@@ -631,7 +717,7 @@ function buildStudentCard(res, ri) {
   if      (compilaRaw === 'SI')  badges += '<span class="stu-badge ok">Compila</span>';
   else if (compilaRaw && compilaRaw !== 'N/A') badges += '<span class="stu-badge warn">Error compilación</span>';
   else if (compilaRaw === 'N/A') badges += '<span class="stu-badge muted">N/A</span>';
-  if (plagioRaw) badges += `<button class="stu-badge amber stu-badge-btn" onclick="openDiff(${id})" title="Ver comparación lado a lado">${esc(plagioRaw)}</button>`;
+  if (plagioRaw) badges += `<button type="button" class="stu-badge amber stu-badge-btn" data-action="openDiff" data-id="${id}" title="Ver comparación lado a lado">${esc(plagioRaw)}</button>`;
 
   const errHtml = (compilaRaw && compilaRaw !== 'SI' && compilaRaw !== 'N/A')
     ? `<div class="stu-error">${esc(compilaRaw.slice(0,600))}${compilaRaw.length>600?'\n…':''}</div>` : '';
@@ -639,8 +725,8 @@ function buildStudentCard(res, ri) {
   const codeIdx = _previewCodes.length;
   _previewCodes.push({ name: nameRaw, code: codigoRaw });
   const previewHtml = codigoRaw
-    ? `<button class="stu-preview-btn" onclick="openCodePreview(${codeIdx})">
-         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    ? `<button type="button" class="stu-preview-btn" data-action="openCodePreview" data-arg="${codeIdx}">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
          Ver código
        </button>` : '';
 
@@ -658,8 +744,8 @@ function buildStudentCard(res, ri) {
       <div>
         <div class="stu-grade-big ${notaCls}" id="grade-wrap-${id}">
           <input type="number" class="stu-grade-edit" id="grade-input-${id}" min="0" max="5" step="0.1"
-                 value="${notaVal}" aria-label="Nota de ${esc(nameRaw)}"
-                 oninput="onGradeEdit(${id}, this.value)" onblur="onGradeBlur(${id}, this)" />
+                 value="${notaVal}" aria-label="Nota de ${esc(nameRaw)}" data-id="${id}"
+                 data-on-input="gradeEdit" data-on-focusout="gradeBlur" />
         </div>
         <div class="grade-edit-hint">de 5.0 · editable</div>
       </div>
@@ -668,27 +754,28 @@ function buildStudentCard(res, ri) {
     <div class="stu-comment-block">
       <div class="stu-comment-label">Evaluador · editable</div>
       <textarea class="stu-comment-edit" rows="2" placeholder="Sin comentario. Escribe uno para el estudiante…"
-                aria-label="Comentario de ${esc(nameRaw)}"
-                oninput="onCommentEdit(${id}, this.value)">${esc(comentario)}</textarea>
+                aria-label="Comentario de ${esc(nameRaw)}" data-id="${id}"
+                data-on-input="commentEdit">${esc(comentario)}</textarea>
     </div>
     ${errHtml}
     <div class="stu-card-actions">
-      <button class="stu-copy-btn" id="copy-${id}" onclick="copyStudent(${id})" title="Copiar nota (y comentario) para pegar en el Campus Virtual">
-        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5H6z"/><path d="M2 5a2 2 0 0 1 2-2v1.5A.5.5 0 0 0 3.5 5v9a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5H12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/></svg>
+      <button type="button" class="stu-copy-btn" id="copy-${id}" data-action="copyStudent" data-id="${id}" title="Copiar nota (y comentario) para pegar en el Campus Virtual">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-.5a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5H6z"/><path d="M2 5a2 2 0 0 1 2-2v1.5A.5.5 0 0 0 3.5 5v9a.5.5 0 0 0 .5.5h6a.5.5 0 0 0 .5-.5H12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"/></svg>
         Copiar nota
       </button>
       ${previewHtml}
-      <button class="ask-ai-btn" onclick="toggleAskAI(${id})" title="Consultar IA sobre el código">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <button type="button" class="ask-ai-btn" data-action="toggleAskAI" data-id="${id}" title="Consultar IA sobre el código">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Ask AI
       </button>
     </div>
     <div class="ask-ai-panel hidden" id="ask-ai-${id}">
       <div class="ask-ai-input-row">
-        <textarea class="ask-ai-input" id="ask-ai-q-${id}" rows="2"
+        <textarea class="ask-ai-input" id="ask-ai-q-${id}" rows="2" data-id="${id}"
+          aria-label="Pregunta sobre el código de ${esc(nameRaw)}"
           placeholder="Pregunta algo sobre el código de este estudiante…"
-          onkeydown="askAIKeydown(event,${id})"></textarea>
-        <button class="ask-ai-send" id="ask-ai-send-${id}" onclick="submitAskAI(${id})">Enviar</button>
+          data-on-keydown="askAIKeydown"></textarea>
+        <button type="button" class="ask-ai-send" id="ask-ai-send-${id}" data-action="submitAskAI" data-id="${id}">Enviar</button>
       </div>
       <div class="ask-ai-response hidden" id="ask-ai-r-${id}"></div>
     </div>`;
@@ -750,7 +837,7 @@ async function copyStudent(id) {
       label.textContent = ' Copiado';
       setTimeout(() => { btn.classList.remove('copied'); label.textContent = ' Copiar nota'; }, 1800);
     }
-  } catch (e) { console.warn('Copy failed:', e); }
+  } catch (e) { UI.toast('No se pudo copiar al portapapeles.', { type: 'error' }); }
 }
 
 function scheduleSync() {
@@ -769,7 +856,10 @@ async function syncResults() {
         nota: r.nota, comentario: r.comentario,
       }))),
     });
-  } catch (e) { console.warn('Sync failed:', e); }
+  } catch (e) {
+    console.warn('Sync failed:', e);
+    UI.toast('No se pudieron guardar tus cambios. Se reintentará con la próxima edición.', { type: 'error' });
+  }
 }
 
 function lineClass(text) {
@@ -823,7 +913,6 @@ function downloadCampus() {
 }
 
 function closeDiff() { document.getElementById('diff-overlay').classList.add('hidden'); }
-function closeDiffOutside(e) { if (e.target === document.getElementById('diff-overlay')) closeDiff(); }
 
 function parsePlagioName(plagioRaw) {
   const m = (plagioRaw || '').match(/^Con:\s*(.+?)\s*\(\d/);
@@ -867,7 +956,6 @@ function openDiff(studentId) {
 }
 
 function closeCampus() { document.getElementById('campus-overlay').classList.add('hidden'); }
-function closeCampusOutside(e) { if (e.target === e.currentTarget) closeCampus(); }
 
 async function confirmCampusDownload() {
   const item = document.getElementById('campus-item').value.trim();
@@ -914,6 +1002,7 @@ function toggleExtraNotes() {
   const body   = document.getElementById('extra-notes-body');
   const isOpen = body.classList.toggle('open');
   toggle.classList.toggle('open', isOpen);
+  toggle.setAttribute('aria-expanded', String(isOpen));
   if (isOpen) setTimeout(() => document.getElementById('extra-notes')?.focus(), 230);
 }
 
@@ -1213,7 +1302,6 @@ function closeCodePreview() {
   _consoleRunId = null;
   document.getElementById('code-overlay').classList.add('hidden');
 }
-function closeCodePreviewOutside(e) { if (e.target === document.getElementById('code-overlay')) closeCodePreview(); }
 
 function resetCopyBtn() {
   const btn = document.getElementById('code-copy-btn');
@@ -1230,5 +1318,45 @@ async function copyPreviewCode() {
     btn.classList.add('copied');
     btn.lastChild.textContent = ' Copiado';
     setTimeout(resetCopyBtn, 2000);
-  } catch (e) { console.warn('Copy failed:', e); }
+  } catch (e) { UI.toast('No se pudo copiar al portapapeles.', { type: 'error' }); }
 }
+
+// ── Event wiring (delegated; see ui.js) ──
+const _num = el => parseInt(el.dataset.id, 10);
+
+UI.registerActions({
+  toggleTheme, openHistory, openSettings, closeSettings, closeHistory, closeCodePreview,
+  closeDiff, closeCampus, saveConfig: () => saveConfig(), copyPreviewCode, runPreviewCode,
+  stopPreviewCode, sendConsoleInput, confirmCampusDownload, toggleExtraNotes, runPregrader,
+  toggleLog, stopJob, downloadExcel, downloadCampus, downloadCSV, clearStudentSearch,
+  resetResultsView,
+  setEnunciadoMode: el => setEnunciadoMode(el.dataset.arg),
+  sortResults: el => sortResults(el.dataset.arg),
+  toggleFilter: el => toggleFilter(el.dataset.arg),
+  onProviderChange: el => onProviderChange(el.dataset.arg),
+  resumeHistory: el => resumeHistory(el.dataset.arg),
+  openCodePreview: el => openCodePreview(parseInt(el.dataset.arg, 10)),
+  openDiff: el => openDiff(_num(el)),
+  copyStudent: el => copyStudent(_num(el)),
+  toggleAskAI: el => toggleAskAI(_num(el)),
+  submitAskAI: el => submitAskAI(_num(el)),
+
+  onModelChange,
+  selectCourse: el => selectCourse(el.value),
+  syncThreshold: el => syncThreshold(el.value),
+  syncThresholdRange: el => syncThresholdRange(el.value),
+  onEnunciadoTextInput,
+  updateExtraNotesDot,
+  studentSearch: el => onStudentSearchInput(el.value),
+  gradeEdit: el => onGradeEdit(_num(el), el.value),
+  gradeBlur: el => onGradeBlur(_num(el), el),
+  commentEdit: el => onCommentEdit(_num(el), el.value),
+  fileSelect: el => onFileSelect(el.dataset.type, el),
+  askAIKeydown: (el, ev) => askAIKeydown(ev, _num(el)),
+  consoleKeydown: (el, ev) => { if (ev.key === 'Enter') sendConsoleInput(); },
+  dragOver: (el, ev) => onDragOver(ev, el.dataset.zone),
+  dragLeave: el => onDragLeave(el.dataset.zone),
+  drop: (el, ev) => onDrop(ev, el.dataset.type),
+});
+
+updateRunButton();
