@@ -9,6 +9,7 @@ from jinja2 import Environment, FileSystemLoader
 
 
 TEMPLATE_PATH = Path(__file__).parents[1] / "templates" / "index.html"
+SCRIPT_PATH = Path(__file__).parents[1] / "static" / "js" / "index.js"
 
 
 class _FileInputParser(HTMLParser):
@@ -25,8 +26,9 @@ class _FileInputParser(HTMLParser):
 class MultiPdfUploadTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template = TEMPLATE_PATH.read_text(encoding="utf-8")
+        cls.template = SCRIPT_PATH.read_text(encoding="utf-8")
         environment = Environment(loader=FileSystemLoader(TEMPLATE_PATH.parent))
+        environment.globals["url_for"] = lambda endpoint, **values: f"/{endpoint}/{values.get('filename', '')}"
         cls.rendered_html = environment.get_template(TEMPLATE_PATH.name).render(
             is_admin=False,
             active_course="",
@@ -76,7 +78,7 @@ class MultiPdfUploadTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node.js is required for the FormData test")
     def test_form_data_contains_every_selected_pdf(self):
         helper_match = re.search(
-            r"function appendPregraderFiles\(formData, files\) \{.*?^    \}",
+            r"function appendPregraderFiles\(formData, files\) \{.*?^\}",
             self.template,
             re.DOTALL | re.MULTILINE,
         )

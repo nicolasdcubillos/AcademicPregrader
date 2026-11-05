@@ -1,0 +1,92 @@
+/* Tokens, reset y superficies del navegador compartidos por todas las páginas. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  color-scheme: dark;
+  --bg:            #0b0c12;
+  --bg-2:          #0e0f16;
+  --surface:       #14151d;
+  --surface-2:     #191b24;
+  --surface-3:     #20222e;
+  --input-bg:      #191b24;
+  --border:        #262838;
+  --border-bright: #323548;
+  --border-focus:  #7c88f0;
+  --p1:  #5a67d6; --p2: #7c74d8; --p3: #b7bdf0;
+  --accent-soft:   #a5b4fc;
+  --accent-wash:   rgba(90,103,214,.14);
+  --text: #e8eaf3; --text-2: #aab0c6; --text-3: #8a90a8;
+  --green: #10b981; --green-dim: rgba(16,185,129,.12);
+  --red:   #f87171; --red-dim:   rgba(248,113,113,.12);
+  --yellow:#f59e0b; --yellow-dim:rgba(245,158,11,.12);
+  --badge-admin: #b7bdf0; --badge-ok: #6ee7b7;
+  --hair:   rgba(255,255,255,.06);
+  --hair-2: rgba(255,255,255,.03);
+  --code-bg:#0a0b12;
+  --scrim:  rgba(4,5,10,.78);
+  --shadow-pop: 0 12px 32px rgba(0,0,0,.45);
+  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --r: 14px; --r-sm: 10px; --r-xs: 7px;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg:            #f5f6fa;
+  --bg-2:          #eceef4;
+  --surface:       #ffffff;
+  --surface-2:     #f5f6fb;
+  --surface-3:     #eceef5;
+  --input-bg:      #f5f6fb;
+  --border:        #e4e7f0;
+  --border-bright: #d3d8e6;
+  --border-focus:  #4b58c9;
+  --p1:  #4b58c9; --p2: #6f66cf; --p3: #4b58c9;
+  --accent-soft:   #4b58c9;
+  --accent-wash:   rgba(75,88,201,.10);
+  --text: #1b2030; --text-2: #4d546b; --text-3: #666c82;
+  --green: #047857; --green-dim: rgba(5,150,105,.10);
+  --red:   #dc2626; --red-dim:   rgba(220,38,38,.08);
+  --yellow:#b45309; --yellow-dim:rgba(180,83,9,.10);
+  --badge-admin: #4b58c9; --badge-ok: #047857;
+  --hair:   rgba(20,24,45,.07);
+  --hair-2: rgba(20,24,45,.035);
+  --code-bg:#0f111c;
+  --scrim:  rgba(20,24,40,.42);
+  --shadow-pop: 0 12px 32px rgba(20,24,45,.16);
+}
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--font);
+  font-size: 1rem; line-height: 1.5; -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; }
+h1, h2, h3 { text-wrap: balance; }
+.hidden { display: none !important; }
+
+/* Superficies del navegador tematizadas con la paleta. */
+::selection { background: var(--p1); color: #fff; }
+:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 0; }
+input, textarea { caret-color: var(--p1); }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color: var(--p1); }
+table, .tabular { font-variant-numeric: tabular-nums; }
+* { scrollbar-width: thin; scrollbar-color: var(--border-bright) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* Botón de tema: alterna sol/luna según el tema activo. */
+.ic-moon { display: none; }
+html[data-theme="light"] .ic-sun  { display: none; }
+html[data-theme="light"] .ic-moon { display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important; scroll-behavior: auto !important;
+  }
+}
