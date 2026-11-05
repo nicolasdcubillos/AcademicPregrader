@@ -129,15 +129,42 @@ def _pick_main_python_file(py_files: dict[str, str]) -> Optional[str]:
     return sorted(py_files)[0]
 
 
+_JAVA_MAIN_RE = re.compile(r"public\s+static\s+void\s+main\s*\(")
+_JAVA_PACKAGE_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.MULTILINE)
+_JAVA_PREFERRED_MAIN = ("main", "app", "application")
+
+
+def _java_fqcn(content: str, fallback: str = "Main") -> str:
+    """Nombre completo (paquete.Clase) de la clase principal de un archivo."""
+    m = re.search(r"\bpublic\s+(?:final\s+|abstract\s+)*(?:class|enum|record)\s+(\w+)", content) \
+        or re.search(r"\b(?:class|enum|record)\s+(\w+)", content)
+    cls = m.group(1) if m else fallback
+    pkg = _JAVA_PACKAGE_RE.search(content)
+    return f"{pkg.group(1)}.{cls}" if pkg else cls
+
+
 def _pick_main_java_class(files: dict[str, str]) -> Optional[str]:
+    candidates = []
     for name, content in files.items():
         if not name.lower().endswith(".java"):
             continue
-        if re.search(r"public\s+static\s+void\s+main\s*\(", content):
-            m = re.search(r"\bclass\s+(\w+)", content)
-            if m:
-                return m.group(1)
-    return None
+        stripped = re.sub(r"/\*.*?\*/|//[^\n]*", "", content, flags=re.DOTALL)
+        if _JAVA_MAIN_RE.search(stripped):
+            candidates.append(_java_fqcn(stripped, Path(name).stem))
+
+    def rank(fqcn):
+        simple = fqcn.rsplit(".", 1)[-1].lower()
+        priority = _JAVA_PREFERRED_MAIN.index(simple) if simple in _JAVA_PREFERRED_MAIN else len(_JAVA_PREFERRED_MAIN)
+        return (priority, fqcn)
+
+    return min(candidates, key=rank) if candidates else None
+
+
+def _safe_rel_path(name: str) -> Path:
+    """Ruta relativa segura (conserva subcarpetas/paquetes, sin '..' ni rutas absolutas)."""
+    parts = [p for p in name.replace("\\", "/").split("/")
+             if p and p not in (".", "..") and ":" not in p]
+    return Path(*parts) if parts else Path("file")
 
 
 def _write_and_compile_cpp(files, tmp_dir, started):
@@ -178,22 +205,25 @@ def _write_and_compile_java(files, tmp_dir, started):
         java_files = [f"{cls}.java"]
     else:
         for name, content in files.items():
-            safe = _safe_name(name)
-            if not safe.lower().endswith(".java"):
+            if not name.lower().endswith(".java"):
                 continue
-            Path(tmp_dir, safe).write_text(content, encoding="utf-8")
-            java_files.append(safe)
+            rel = Path("_src") / _safe_rel_path(name)
+            target = Path(tmp_dir, rel)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            java_files.append(rel.as_posix())
         if not java_files:
             return None, {"ok": False, "stage": "compile", "language": "java",
                      "exit_code": None, "stdout": "", "timed_out": False,
                      "stderr": "No se encontró ningún archivo .java para compilar.",
                      "duration_ms": int((time.time() - started) * 1000)}
 
-    compile_cmd = ["javac", "-encoding", "UTF-8"] + java_files
+    compile_cmd = ["javac", "-encoding", "UTF-8", "-proc:none", "-d", "."] + java_files
     rc, out, err, timed_out = _run_proc(compile_cmd, tmp_dir, None, COMPILE_TIMEOUT_S)
     if rc != 0 or timed_out:
         return None, _result("java", "compile", rc, out, err, timed_out, started)
-    main_class = _pick_main_java_class(files) or Path(java_files[0]).stem
+    main_class = _pick_main_java_class(files) or _java_fqcn(
+        files.get("main", ""), Path(java_files[0]).stem)
     return main_class, None
 
 

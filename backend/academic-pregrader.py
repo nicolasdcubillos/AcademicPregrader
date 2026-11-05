@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Optional
 import pdfplumber
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import java_project  # noqa: E402
+
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 if hasattr(sys.stderr, 'reconfigure'):
@@ -45,13 +48,20 @@ LANG_LABELS = {
 }
 
 
+def _is_ignored_path(carpeta: Path, f: Path, lang: str) -> bool:
+    """Descarta archivos ocultos y basura de empaquetado; en Java también IDE/build/tests."""
+    if f.name.startswith("."):
+        return True
+    parts = f.relative_to(carpeta).parts
+    if lang == "java":
+        return java_project.is_noise_path(parts)
+    return any(p.lower() == "__macosx" or p.startswith(".") for p in parts[:-1])
+
+
 def detect_language(carpeta: Path) -> Optional[str]:
     """Detecta el lenguaje de una entrega según los archivos presentes."""
     for lang in LANG_PRIORITY:
-        exts = LANG_CONFIG[lang]["src_ext"]
-        files = [f for f in carpeta.rglob("*")
-                 if f.suffix.lower() in exts and not f.name.startswith(".")]
-        if files:
+        if find_submission_files(carpeta, lang):
             return lang
     return None
 
@@ -61,7 +71,7 @@ def find_submission_files(carpeta: Path, lang: str) -> list:
     exts = LANG_CONFIG[lang]["src_ext"]
     return sorted(
         f for f in carpeta.rglob("*")
-        if f.suffix.lower() in exts and not f.name.startswith(".")
+        if f.is_file() and f.suffix.lower() in exts and not _is_ignored_path(carpeta, f, lang)
     )
 
 
@@ -195,8 +205,15 @@ def extract_pdf_text(pdf_path) -> str:
     return text
 
 
-def extract_submission_text(files: list, lang: str) -> str:
-    """Extrae el contenido de una entrega para enviarlo al LLM."""
+MAX_SUBMISSION_CHARS = 60_000
+
+
+def extract_submission_text(files: list, lang: str, root: Optional[Path] = None) -> str:
+    """Extrae el contenido de una entrega para enviarlo al LLM.
+
+    Si se da `root`, cada archivo se etiqueta con su ruta relativa (conserva los
+    paquetes de un proyecto); si no, solo con su nombre.
+    """
     if lang == "pdf":
         parts = []
         for f in files:
@@ -208,25 +225,42 @@ def extract_submission_text(files: list, lang: str) -> str:
     else:
         parts = []
         for f in files:
+            label = java_project.rel_label(root, f) if root else f.name
             try:
                 if f.suffix.lower() == ".ipynb":
                     content = extract_notebook_source(str(f))
                 else:
                     content = f.read_text(encoding="utf-8", errors="replace")
-                parts.append(f"// --- {f.name} ---\n{normalize_code(content)}")
+                parts.append(f"// --- {label} ---\n{normalize_code(content)}")
             except Exception as e:
-                parts.append(f"// Error leyendo {f.name}: {e}")
+                parts.append(f"// Error leyendo {label}: {e}")
         return "\n\n".join(parts)
+
+
+def build_java_llm_input(source_text: str, files: list, root: Path,
+                         compile_ok: Optional[bool], run_report: str) -> str:
+    """Arma la entrada del LLM para un proyecto Java: estructura, ejecución y código."""
+    tree = "\n".join(f"- {java_project.rel_label(root, f)}" for f in files)
+    sections = [f"ARCHIVOS DEL PROYECTO JAVA ({len(files)}):\n{tree}"]
+    if compile_ok is True:
+        sections.append("COMPILACIÓN: exitosa")
+    if run_report:
+        sections.append("EJECUCIÓN AUTOMÁTICA SIN ENTRADA:\n" + run_report)
+    if len(source_text) > MAX_SUBMISSION_CHARS:
+        source_text = source_text[:MAX_SUBMISSION_CHARS] + "\n// … [código truncado]"
+    sections.append("CÓDIGO FUENTE:\n" + source_text)
+    return "\n\n".join(sections)
 
 
 # ==============================
 # COMPILACIÓN
 # ==============================
 
-def compile_submission(carpeta: Path, files: list, lang: str) -> tuple:
+def compile_submission(carpeta: Path, files: list, lang: str, out_dir: Optional[Path] = None) -> tuple:
     """
     Intenta compilar la entrega según el lenguaje.
-    Retorna (success: bool, error_msg: str).
+    Retorna (success: bool, error_msg: str). Para Java, las clases compiladas
+    quedan en `out_dir` (necesario para ejecutar el proyecto después).
     """
     if lang == "cpp":
         src = files[0]
@@ -235,9 +269,9 @@ def compile_submission(carpeta: Path, files: list, lang: str) -> tuple:
         return (result.returncode == 0, result.stderr)
 
     elif lang == "java":
-        java_files = [str(f) for f in files]
-        result = run(["javac", "-encoding", "UTF-8", "-d", str(carpeta)] + java_files)
-        return (result.returncode == 0, result.stderr)
+        if out_dir is None:
+            out_dir = carpeta / ".classes"
+        return java_project.compile_java(carpeta, files, out_dir)
 
     elif lang == "python":
         errors = []
@@ -398,12 +432,22 @@ ESCALA DE REFERENCIA:
 0.0 → no resuelve nada del enunciado"""
 
 
-def _build_eval_prompt(code, enunciado):
+_JAVA_PROJECT_RULES = """REGLAS ADICIONALES PARA PROYECTOS JAVA COMPLETOS:
+- La entrega es un proyecto con varios archivos; las rutas indican la estructura de paquetes. Evalúa el proyecto en conjunto.
+- Verifica cada requisito explícito del enunciado: clases, atributos, métodos, firmas, visibilidad (private/public), static, final, sobrecarga, uso de this, nombres y estructura de paquetes pedidos.
+- Un requisito explícito del enunciado que no se cumple cuenta como funcionalidad faltante.
+- Compara la salida de la ejecución automática con la salida esperada del enunciado (si la hay): los valores y el comportamiento deben coincidir; el formato exacto de espacios o separadores de miles NO importa.
+- Si la ejecución no produjo salida o falló por falta de entrada del usuario, decide leyendo el código.
+- Ignora archivos de prueba (AppTest), nombres de paquete/proyecto extra y detalles de IDE."""
+
+
+def _build_eval_prompt(code, enunciado, extra_rules=""):
+    extra = f"\n{extra_rules}\n" if extra_rules else ""
     return f"""Evalúa la solución. Responde SOLO con este JSON (sin texto extra):
 {{"logica": X.X, "nota_final": X.X, "comentario": "..."}}
 
 {_EVAL_RULES}
-
+{extra}
 ENUNCIADO:
 {enunciado}
 
@@ -442,7 +486,7 @@ def _validate_eval_data(data):
     return normalized
 
 
-def _llm_evaluate_gemini(code, enunciado, model, api_key, max_retries=5):
+def _llm_evaluate_gemini(code, enunciado, model, api_key, max_retries=5, extra_rules=""):
     try:
         import google.generativeai as genai
     except ImportError:
@@ -465,7 +509,7 @@ def _llm_evaluate_gemini(code, enunciado, model, api_key, max_retries=5):
         generation_config=generation_config,
         system_instruction=_EVAL_SYSTEM_INSTRUCTION,
     )
-    prompt = _build_eval_prompt(code, enunciado)
+    prompt = _build_eval_prompt(code, enunciado, extra_rules)
 
     for attempt in range(1, max_retries + 1):
         if attempt > 1:
@@ -492,7 +536,7 @@ def _is_openai_reasoning_model(model: str) -> bool:
     return m.startswith(("gpt-5", "o1", "o3", "o4"))
 
 
-def _llm_evaluate_openai(code, enunciado, model, api_key, max_retries=5):
+def _llm_evaluate_openai(code, enunciado, model, api_key, max_retries=5, extra_rules=""):
     try:
         from openai import OpenAI
     except ImportError:
@@ -505,7 +549,7 @@ def _llm_evaluate_openai(code, enunciado, model, api_key, max_retries=5):
         return None
 
     client = OpenAI(api_key=api_key)
-    prompt = _build_eval_prompt(code, enunciado)
+    prompt = _build_eval_prompt(code, enunciado, extra_rules)
 
     reasoning_model = _is_openai_reasoning_model(model)
     call_kwargs = {
@@ -550,7 +594,7 @@ def _llm_evaluate_openai(code, enunciado, model, api_key, max_retries=5):
 
 
 def _llm_evaluate_azure_openai(
-    code, enunciado, deployment, endpoint, api_version, max_retries=5
+    code, enunciado, deployment, endpoint, api_version, max_retries=5, extra_rules=""
 ):
     try:
         from azure.identity import DefaultAzureCredential, get_bearer_token_provider
@@ -571,7 +615,7 @@ def _llm_evaluate_azure_openai(
         azure_ad_token_provider=token_provider,
         api_version=api_version,
     )
-    prompt = _build_eval_prompt(code, enunciado)
+    prompt = _build_eval_prompt(code, enunciado, extra_rules)
     call_kwargs = {
         "model": deployment,
         "messages": [
@@ -607,16 +651,16 @@ def _llm_evaluate_azure_openai(
 
 def llm_evaluate(
     code, enunciado, provider, model, api_key=None, max_retries=5,
-    azure_endpoint="", azure_api_version="2024-10-21"
+    azure_endpoint="", azure_api_version="2024-10-21", extra_rules=""
 ):
     print(f"  -> Enviando al LLM ({provider} / {model})...")
     if provider == "gemini":
-        return _llm_evaluate_gemini(code, enunciado, model, api_key, max_retries)
+        return _llm_evaluate_gemini(code, enunciado, model, api_key, max_retries, extra_rules)
     elif provider == "openai":
-        return _llm_evaluate_openai(code, enunciado, model, api_key, max_retries)
+        return _llm_evaluate_openai(code, enunciado, model, api_key, max_retries, extra_rules)
     elif provider == "azure_openai":
         return _llm_evaluate_azure_openai(
-            code, enunciado, model, azure_endpoint, azure_api_version, max_retries
+            code, enunciado, model, azure_endpoint, azure_api_version, max_retries, extra_rules
         )
     else:
         print(f"  -> Proveedor desconocido: '{provider}'")
@@ -723,6 +767,9 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
     plagiarism_threshold = config.getfloat("plagiarism", "threshold", fallback=0.7)
     submission_language  = config.get("submission", "language", fallback="auto")
     comment_on_max       = config.getboolean("submission", "comment_on_max", fallback=False)
+    extract_archives     = config.getboolean("submission", "extract_archives", fallback=True)
+    latest_only          = config.getboolean("submission", "latest_only", fallback=True)
+    run_java             = config.getboolean("submission", "run_java", fallback=True)
 
     cache_path = base_path / ".evaluation_cache.json"
     cache = load_cache(cache_path) if enable_cache else {}
@@ -740,6 +787,25 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
     )
     print("Estudiantes encontrados:", len(estudiantes))
 
+    # Un estudiante puede entregar varias veces: solo cuenta la más reciente.
+    # Las anteriores se eliminan para que no entren a JPlag (se compararían
+    # contra el propio estudiante).
+    if latest_only:
+        estudiantes, descartadas = java_project.keep_latest_submissions(
+            estudiantes, lambda p: parse_student_name(p.name)
+        )
+        for d in descartadas:
+            print(f"Entrega anterior descartada (hay una más reciente): {d.name}")
+            shutil.rmtree(d, ignore_errors=True)
+        if descartadas:
+            print(f"Estudiantes con entregas únicas: {len(estudiantes)}")
+
+    # Las entregas suelen venir comprimidas (.zip/.rar) dentro de la carpeta del estudiante.
+    if extract_archives:
+        for carpeta in estudiantes:
+            for line in java_project.extract_nested_archives(carpeta):
+                print(f"[{parse_student_name(carpeta.name)}]{line}")
+
     # ── Detectar lenguaje dominante (para JPlag y modo auto) ──────────────────
     if submission_language == "auto":
         lang_counts: dict[str, int] = {}
@@ -755,6 +821,12 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
     else:
         dominant_lang = submission_language
         print(f"Lenguaje configurado: {LANG_LABELS.get(dominant_lang, dominant_lang)}")
+
+    # En proyectos Java se borran IDE/build/tests para que JPlag solo compare código del estudiante.
+    for carpeta in estudiantes:
+        lang = detect_language(carpeta) if submission_language == "auto" else submission_language
+        if lang == "java":
+            java_project.prune_noise(carpeta)
 
     jplag_lang = LANG_CONFIG.get(dominant_lang, {}).get("jplag", "cpp")
 
@@ -795,6 +867,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
     resultados = []
     _print_lock = threading.Lock()
     _cache_lock = threading.Lock()
+    classes_root = Path(tempfile.mkdtemp(prefix="pregrader_classes_"))
 
     def _process_student(carpeta):
         logs = []
@@ -823,7 +896,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
 
         # Código fuente de la entrega (para preview y evaluación)
         try:
-            codigo_fuente = extract_submission_text(files, lang)
+            codigo_fuente = extract_submission_text(files, lang, carpeta)
         except Exception:
             codigo_fuente = ""
 
@@ -837,9 +910,11 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
 
         # Compilación
         compila_str = "N/A"
+        java_out = classes_root / carpeta.name if lang == "java" else None
+        compiled_ok = False
         if enable_compilation and can_compile_lang and LANG_CONFIG.get(lang, {}).get("compile"):
             log(f"  -> Compilando ({len(files)} archivo(s))...")
-            success, error_msg = compile_submission(carpeta, files, lang)
+            success, error_msg = compile_submission(carpeta, files, lang, java_out)
             if not success:
                 log("  -> Error de compilación")
                 log("--------------------------------------")
@@ -847,10 +922,29 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                 return [estudiante, error_msg, plagio_str, 0.0, "Error de compilación", codigo_fuente], logs
             log("  -> Compilación exitosa")
             compila_str = "SI"
+            compiled_ok = True
         elif lang == "pdf":
             log("  -> PDF: compilación no aplica")
         else:
             log("  -> Compilación omitida")
+
+        # Proyecto Java: ejecutar la clase principal y dar al LLM la estructura completa
+        llm_input = codigo_fuente
+        extra_rules = ""
+        if lang == "java":
+            extra_rules = _JAVA_PROJECT_RULES
+            run_report = ""
+            if compiled_ok and run_java:
+                main_classes = java_project.find_main_classes(files)
+                if main_classes:
+                    log(f"  -> Ejecutando {main_classes[0]}...")
+                    run_result = java_project.run_java_main(java_out, main_classes[0])
+                    run_report = java_project.describe_run(main_classes[0], run_result)
+                else:
+                    run_report = "El proyecto no tiene ninguna clase con método main."
+                    log("  -> No se encontró método main")
+            llm_input = build_java_llm_input(codigo_fuente, files, carpeta,
+                                             True if compiled_ok else None, run_report)
 
         # Evaluación LLM
         logica     = 0.0
@@ -858,7 +952,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
         resp       = None
 
         if enable_llm:
-            code = codigo_fuente
+            code = llm_input
             cache_key = compute_evaluation_key(code, enunciado_texto)
 
             with _cache_lock:
@@ -870,7 +964,8 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                                     llm_provider, llm_model,
                                     api_key=llm_api_key,
                                     azure_endpoint=azure_openai_endpoint,
-                                    azure_api_version=azure_openai_api_version)
+                                    azure_api_version=azure_openai_api_version,
+                                    extra_rules=extra_rules)
                 if resp is not None:
                     with _cache_lock:
                         if enable_cache:
@@ -923,6 +1018,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                 }
                 print(f"##RESULT## {json.dumps(row_dict, ensure_ascii=False)}", flush=True)
 
+    shutil.rmtree(classes_root, ignore_errors=True)
     print("Procesamiento finalizado.")
     print(f"##DONE## {json.dumps({'count': len(resultados)}, ensure_ascii=False)}", flush=True)
     print("======================================")

@@ -106,7 +106,34 @@ gemini_api_key =        # Prefer GEMINI_API_KEY in deployed environments
 
 [plagiarism]
 threshold = 0.7    # Similarity threshold to flag plagiarism (0.0–1.0)
+
+[submission]
+language         = auto  # auto, cpp, java, python or pdf
+extract_archives = true  # Extract .zip/.rar/.7z found inside each student's folder
+latest_only      = true  # Grade only the most recent submission of each student
+run_java         = true  # Run the Java main class (no input, 10 s timeout) and send its output to the LLM
 ```
+
+### Grading full Java projects
+
+A student folder can contain loose `.java` files or a whole IntelliJ/Maven/Eclipse
+project compressed as `.zip` (the usual Moodle/Brightspace export). For Java the
+pipeline:
+
+1. Extracts nested archives (zip-slip protected, 200 MB cap) and deletes IDE/build
+   noise (`.idea`, `target`, `build`, `out`, `__MACOSX`, …) and `src/test`.
+2. Compiles **all** sources together with `javac`, honoring packages.
+3. Runs the class with `main` (preferring `Main`/`App`) without input and with a
+   timeout, and sends the output, the file list and the code to the LLM together
+   with Java-specific grading rules. A project that does not compile gets grade 0.
+4. Keeps only the latest submission when a student uploaded several (the date is
+   read from the folder name, e.g. `... - 22 de octubre de 2026 2212`).
+
+Programs that read from `System.in` are run with an empty input, so they end with
+an input error that the LLM sees as such.
+
+> JPlag needs Java 25 (see `Dockerfile`). Running student code is not sandboxed
+> beyond a timeout and memory limit: run the app in a container.
 
 For Azure OpenAI without API keys, configure the repository variables
 `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`. The deployment workflow
@@ -175,6 +202,8 @@ python src/academic-pregrader.py grading_session/
 - Python 3.8+
 - `pdfplumber` (`pip install pdfplumber`)
 - `g++` available on the PATH
+- JDK 11+ (`javac` and `java`) to grade Java submissions
+- Optional: `7z` (p7zip) or `unrar`/`bsdtar` to extract `.7z`/`.rar` submissions (`.zip` needs nothing extra)
 - An OpenAI or Gemini API key, or Azure OpenAI with `DefaultAzureCredential`
 - Java 11+ (only if `enable_plagiarism=true`)
 - [JPlag v4+](https://github.com/jplag/JPlag/releases) (only if `enable_plagiarism=true`)

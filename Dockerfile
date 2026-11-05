@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.11-distutils \
         python3-pip \
         g++ \
+        p7zip-full \
         wget \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
