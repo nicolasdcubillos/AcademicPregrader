@@ -35,6 +35,7 @@ from pypdf import PdfReader, PdfWriter
 import auth
 import code_runner
 import excel_export
+import login_notify
 
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -196,6 +197,7 @@ def login():
             session["user"] = uname
             auth.record_login(uname)
             auth.log_event(uname, client_ip(), "login")
+            login_notify.notify_login(uname, client_ip())
             if result["user"]["must_change_password"]:
                 return redirect(url_for("change_password"))
             next_url = request.form.get("next", "") or url_for("index")
