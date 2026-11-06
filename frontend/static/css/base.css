@@ -25,8 +25,9 @@
   --code-bg:#0a0b12;
   --scrim:  rgba(4,5,10,.78);
   --shadow-pop: 0 12px 32px rgba(0,0,0,.45);
-  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --font: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --display: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
   --r: 14px; --r-sm: 10px; --r-xs: 7px;
   --ease-out: cubic-bezier(.22, 1, .36, 1);
 }
@@ -64,6 +65,7 @@ body {
 }
 button, input, select, textarea { font: inherit; }
 h1, h2, h3 { text-wrap: balance; }
+h1, .results-sublabel { font-family: var(--display); }
 .hidden { display: none !important; }
 
 /* Superficies del navegador tematizadas con la paleta. */
