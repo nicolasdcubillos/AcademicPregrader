@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from functools import partial
 from pathlib import Path
 from typing import Optional
 
@@ -38,21 +39,41 @@ RUN_TIMEOUT_S = 10
 # porque incluye el tiempo que el evaluador tarda en escribir la entrada.
 INTERACTIVE_RUN_TIMEOUT_S = 180
 MAX_MEMORY_MB = 512
+JAVA_MAX_MEMORY_MB = 2048
+JAVA_VM_OPTIONS = (
+    "-Xms16m",
+    "-Xmx128m",
+    "-XX:ReservedCodeCacheSize=32m",
+    "-XX:CompressedClassSpaceSize=32m",
+    "-XX:+UseSerialGC",
+)
 MAX_PROCS = 64
 
 
-def _limit_resources():
+def _limit_resources(memory_mb=MAX_MEMORY_MB):
     """preexec_fn (solo POSIX): topa CPU, memoria virtual, nº de procesos y tamaño de archivo."""
     try:
         import resource
         cpu = RUN_TIMEOUT_S + COMPILE_TIMEOUT_S
         resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
-        mem = MAX_MEMORY_MB * 1024 * 1024
+        mem = memory_mb * 1024 * 1024
         resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
         resource.setrlimit(resource.RLIMIT_NPROC, (MAX_PROCS, MAX_PROCS))
         resource.setrlimit(resource.RLIMIT_FSIZE, (10 * 1024 * 1024, 10 * 1024 * 1024))
     except Exception:
         pass  # best-effort; en Windows o si falla, seguimos solo con el timeout
+
+
+def resource_limiter(cmd):
+    if sys.platform == "win32":
+        return None
+    # La JVM reserva memoria virtual adicional al heap, también al ejecutar javac.
+    memory_mb = JAVA_MAX_MEMORY_MB if Path(cmd[0]).name in ("java", "javac") else MAX_MEMORY_MB
+    return partial(_limit_resources, memory_mb=memory_mb)
+
+
+def _java_command(tmp_dir, main_class):
+    return ["java", *JAVA_VM_OPTIONS, "-cp", tmp_dir, main_class]
 
 
 def _truncate(s: Optional[str]) -> str:
@@ -93,7 +114,7 @@ def _run_proc(cmd, cwd, stdin_text, timeout):
         encoding="utf-8", errors="replace", timeout=timeout,
     )
     if sys.platform != "win32":
-        kwargs["preexec_fn"] = _limit_resources
+        kwargs["preexec_fn"] = resource_limiter(cmd)
     try:
         result = subprocess.run(cmd, **kwargs)
         return result.returncode, result.stdout, result.stderr, False
@@ -218,7 +239,7 @@ def _write_and_compile_java(files, tmp_dir, started):
                      "stderr": "No se encontró ningún archivo .java para compilar.",
                      "duration_ms": int((time.time() - started) * 1000)}
 
-    compile_cmd = ["javac", "-encoding", "UTF-8", "-proc:none", "-d", "."] + java_files
+    compile_cmd = ["javac", *["-J" + o for o in JAVA_VM_OPTIONS], "-encoding", "UTF-8", "-proc:none", "-d", "."] + java_files
     rc, out, err, timed_out = _run_proc(compile_cmd, tmp_dir, None, COMPILE_TIMEOUT_S)
     if rc != 0 or timed_out:
         return None, _result("java", "compile", rc, out, err, timed_out, started)
@@ -258,7 +279,7 @@ def _run_java(files, tmp_dir, stdin_text, started) -> dict:
         return err_result
 
     rc, out, err, timed_out = _run_proc(
-        ["java", "-cp", tmp_dir, main_class], tmp_dir, stdin_text, RUN_TIMEOUT_S
+        _java_command(tmp_dir, main_class), tmp_dir, stdin_text, RUN_TIMEOUT_S
     )
     return _result("java", "run", rc, out, err, timed_out, started)
 
@@ -321,5 +342,5 @@ def prepare_interactive(code: str, language: Optional[str] = None):
     main_class, err_result = _write_and_compile_java(files, tmp_dir, started)
     if err_result:
         return {**err_result, "tmp_dir": tmp_dir}
-    return {"ok": True, "language": "java", "cmd": ["java", "-cp", tmp_dir, main_class], "tmp_dir": tmp_dir}
+    return {"ok": True, "language": "java", "cmd": _java_command(tmp_dir, main_class), "tmp_dir": tmp_dir}
 

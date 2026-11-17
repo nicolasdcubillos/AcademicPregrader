@@ -96,7 +96,7 @@ class InteractiveRun:
                 cmd,
                 cwd=tmp_dir,
                 stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
-                preexec_fn=code_runner._limit_resources if sys.platform != "win32" else None,
+                preexec_fn=code_runner.resource_limiter(cmd),
                 close_fds=True,
                 start_new_session=True,
             )
