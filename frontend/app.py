@@ -40,6 +40,8 @@ import login_notify
 app = Flask(__name__)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['MAX_CONTENT_LENGTH'] = 512 * 1024 * 1024  # 512 MB upload limit
+PUBLIC_HOST = os.environ.get("PREGRADER_PUBLIC_HOST", "").strip()
+app.config["TRUSTED_HOSTS"] = [PUBLIC_HOST] if PUBLIC_HOST else None
 app.secret_key = auth.get_secret_key()
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,

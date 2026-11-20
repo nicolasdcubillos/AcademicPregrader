@@ -51,14 +51,15 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --image "${{ vars.ACR_NAME }}.azurecr.io/pregrader:${{ github.sha }}" \
             --set-env-vars \
+              "PREGRADER_PUBLIC_HOST=pregrader.x7company.com" \
               "AZURE_OPENAI_ENDPOINT=${{ vars.AZURE_OPENAI_ENDPOINT }}" \
               "AZURE_OPENAI_DEPLOYMENT=${{ vars.AZURE_OPENAI_DEPLOYMENT }}" \
               "AZURE_OPENAI_API_VERSION=2024-10-21"
 
       - name: Show app URL
         run: |
-          FQDN=$(az containerapp show \
+          PUBLIC_HOST=$(az containerapp show \
             --name "${{ vars.CONTAINERAPP_NAME }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --query properties.configuration.ingress.fqdn -o tsv)
-          echo "Deployed: https://$FQDN" >> "$GITHUB_STEP_SUMMARY"
+            --query "properties.template.containers[0].env[?name=='PREGRADER_PUBLIC_HOST'].value | [0]" -o tsv)
+          echo "Deployed: https://$PUBLIC_HOST" >> "$GITHUB_STEP_SUMMARY"

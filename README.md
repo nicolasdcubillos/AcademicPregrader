@@ -135,6 +135,17 @@ an input error that the LLM sees as such.
 > JPlag needs Java 25 (see `Dockerfile`). Running student code is not sandboxed
 > beyond a timeout and memory limit: run the app in a container.
 
+### Production hostname
+
+The Azure deployment sets `PREGRADER_PUBLIC_HOST=pregrader.x7company.com`.
+Flask accepts requests only for that exact hostname; the default Azure URL and
+revision-specific URLs return HTTP 400, including for login, API and static files.
+The DNS CNAME must still point to the Azure hostname, and its managed TLS
+certificate remains configured in Azure. This hostname check does not replace
+authentication or make the Container App's network ingress private.
+
+Leave `PREGRADER_PUBLIC_HOST` unset for local development.
+
 For Azure OpenAI without API keys, configure the repository variables
 `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`. The deployment workflow
 enables the Container App's system-assigned identity. Assign that identity the

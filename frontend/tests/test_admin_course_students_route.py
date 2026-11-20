@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 _TMP_CONFIG_DIR = Path(tempfile.mkdtemp(prefix="pregrader_test_config_"))
 
@@ -66,6 +67,49 @@ class AdminCourseStudentsRouteTests(unittest.TestCase):
         r = client.get("/admin/api/courses/999999/students")
         self.assertEqual(r.status_code, 404)
         self.assertFalse(r.get_json()["ok"])
+
+
+class HostAccessTests(unittest.TestCase):
+    def setUp(self):
+        config = patch.dict(
+            flask_app.app.config,
+            {"TRUSTED_HOSTS": ["pregrader.x7company.com"]},
+        )
+        config.start()
+        self.addCleanup(config.stop)
+        self.client = flask_app.app.test_client()
+
+    def test_public_host_serves_login(self):
+        response = self.client.get("/login", base_url="https://pregrader.x7company.com")
+        self.assertEqual(response.status_code, 200)
+
+    def test_azure_hosts_cannot_access_login_api_or_static_files(self):
+        for host in (
+            "academic-pregrader-prod.yellowcliff-66c52a32.eastus.azurecontainerapps.io",
+            "academic-pregrader-prod--0000054.yellowcliff-66c52a32.eastus.azurecontainerapps.io",
+        ):
+            for path, method in (
+                ("/login", "GET"),
+                ("/login", "POST"),
+                ("/admin/api/courses/1/students", "GET"),
+                ("/static/css/base.css", "GET"),
+            ):
+                with self.subTest(host=host, path=path, method=method):
+                    response = self.client.open(path, method=method, base_url=f"https://{host}")
+                    self.assertEqual(response.status_code, 400)
+
+    def test_forwarded_host_does_not_allow_the_old_url(self):
+        response = self.client.get(
+            "/login",
+            base_url="https://academic-pregrader-prod.yellowcliff-66c52a32.eastus.azurecontainerapps.io",
+            headers={"X-Forwarded-Host": "pregrader.x7company.com"},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_local_development_is_available_without_restriction(self):
+        with patch.dict(flask_app.app.config, {"TRUSTED_HOSTS": None}):
+            response = self.client.get("/login", base_url="http://localhost:5000")
+        self.assertEqual(response.status_code, 200)
 
 
 if __name__ == "__main__":
