@@ -208,16 +208,44 @@ python src/academic-pregrader.py grading_session/
 
 ---
 
+### PDF and Word submissions
+
+The PDF submission mode also accepts DOCX files. LibreOffice converts Word files
+locally into temporary PDFs, and the existing PDF reader extracts their text.
+Conversion profiles are isolated per worker and removed with the temporary PDFs.
+Native PDFs remain unchanged. Automatic mode recognizes DOCX as documents, while
+source code still has priority when a submission contains both formats.
+
+JPlag's text mode compares extracted text in a separate TXT-only directory, not
+binary PDFs, Word files or the Campus Virtual HTML index. The same extracted text
+is reused for grading. Failed conversions, unreadable documents, unsupported
+formats (including PNG-only diagrams), and LLM failures appear as explicit
+per-student errors with no numeric grade. They require manual review; no OCR or
+image interpretation is included. A completed run with errors is labeled as
+requiring review rather than leaving students pending.
+
+Only one evaluation can run per user at a time. The interface locks the start
+button before saving configuration, and the server rejects overlapping requests.
+
+Docker includes LibreOffice Writer and fonts; rebuild and deploy the image to
+enable Word conversion. For local use, install LibreOffice and expose `libreoffice`
+or `soffice` on PATH. On macOS, after installing LibreOffice:
+
+```bash
+export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
+```
+
 ## Requirements
 
 - Python 3.8+
 - `pdfplumber` (`pip install pdfplumber`)
+- LibreOffice Writer on PATH for DOCX conversion (included in Docker)
 - `g++` available on the PATH
 - JDK 11+ (`javac` and `java`) to grade Java submissions
 - Optional: `7z` (p7zip) or `unrar`/`bsdtar` to extract `.7z`/`.rar` submissions (`.zip` needs nothing extra)
 - An OpenAI or Gemini API key, or Azure OpenAI with `DefaultAzureCredential`
-- Java 11+ (only if `enable_plagiarism=true`)
-- [JPlag v4+](https://github.com/jplag/JPlag/releases) (only if `enable_plagiarism=true`)
+- Java 25+ for the bundled JPlag 6.3.0 (only if `enable_plagiarism=true`)
+- [JPlag 6.3.0](https://github.com/jplag/JPlag/releases) (only if `enable_plagiarism=true`)
 
 ---
 

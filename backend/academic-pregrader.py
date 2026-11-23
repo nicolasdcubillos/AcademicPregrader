@@ -34,7 +34,7 @@ LANG_CONFIG = {
     "cpp":    {"src_ext": (".cpp", ".cc", ".cxx"), "jplag": "cpp",     "compile": "cpp"},
     "java":   {"src_ext": (".java",),               "jplag": "java",    "compile": "java"},
     "python": {"src_ext": (".py", ".ipynb"),        "jplag": "python3", "compile": "python"},
-    "pdf":    {"src_ext": (".pdf",),                "jplag": "text",    "compile": None},
+    "pdf":    {"src_ext": (".pdf", ".docx"),        "jplag": "text",    "compile": None},
 }
 # Orden de prioridad para detección automática
 LANG_PRIORITY = ["cpp", "java", "python", "pdf"]
@@ -198,11 +198,41 @@ def extract_pdf_text(pdf_path) -> str:
     """Extrae texto de un PDF (enunciado o entrega)."""
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"No se encontró: {pdf_path}")
-    text = ""
+    parts = []
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
-            text += page.extract_text() or ""
-    return text
+            parts.append(page.extract_text() or "")
+    return "\n\n".join(parts)
+
+
+def convert_docx_to_pdf(docx_path: Path, output_dir: Path) -> Path:
+    """Convierte un DOCX localmente sin modificar el archivo original."""
+    converter = shutil.which("libreoffice") or shutil.which("soffice")
+    if not converter:
+        raise RuntimeError(
+            "Para convertir DOCX a PDF, instala LibreOffice y agrega soffice al PATH."
+        )
+    output_dir = output_dir.resolve()
+    # Cada worker necesita su propio perfil para evitar bloqueos de LibreOffice.
+    profile_uri = (output_dir / "profile").as_uri()
+    try:
+        result = subprocess.run(
+            [
+                converter, f"-env:UserInstallation={profile_uri}", "--headless",
+                "--convert-to", "pdf:writer_pdf_Export", "--outdir", str(output_dir),
+                str(docx_path.resolve()),
+            ],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("La conversión DOCX a PDF excedió 120 segundos.") from exc
+
+    pdf_path = output_dir / f"{docx_path.stem}.pdf"
+    if result.returncode != 0 or not pdf_path.is_file() or pdf_path.stat().st_size == 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "No se generó un PDF."
+        raise RuntimeError(f"Falló la conversión DOCX a PDF: {detail}")
+    return pdf_path
 
 
 MAX_SUBMISSION_CHARS = 60_000
@@ -218,9 +248,18 @@ def extract_submission_text(files: list, lang: str, root: Optional[Path] = None)
         parts = []
         for f in files:
             try:
-                parts.append(extract_pdf_text(str(f)))
+                if f.suffix.lower() == ".docx":
+                    print(f"  -> Convirtiendo DOCX a PDF: {f.name}", flush=True)
+                    with tempfile.TemporaryDirectory(prefix="pregrader-docx-") as tmp:
+                        pdf_path = convert_docx_to_pdf(f, Path(tmp))
+                        text = extract_pdf_text(str(pdf_path))
+                else:
+                    text = extract_pdf_text(str(f))
+                if not text.strip():
+                    raise ValueError("El documento no contiene texto extraíble; requiere revisión manual u OCR.")
+                parts.append(text)
             except Exception as e:
-                parts.append(f"[Error leyendo PDF {f.name}: {e}]")
+                raise ValueError(f"No se pudo leer {f.name}: {e}") from e
         return "\n\n".join(parts)
     else:
         parts = []
@@ -339,7 +378,41 @@ def _check_java_version(verbose: bool = True) -> bool:
 
 
 def run_plagiarism_check(base_path: Path, jplag_jar: str, threshold: float,
-                         jplag_lang: str = "cpp") -> Optional[dict]:
+                         jplag_lang: str = "cpp",
+                         submission_texts: Optional[dict] = None) -> Optional[dict]:
+    """JPlag text necesita archivos TXT, no documentos PDF o DOCX binarios."""
+    if jplag_lang != "text":
+        return _run_jplag(base_path, jplag_jar, threshold, jplag_lang)
+
+    if submission_texts is None:
+        submission_texts = {}
+        for carpeta in sorted(base_path.iterdir()):
+            if not carpeta.is_dir() or carpeta.name.startswith((".", "__")):
+                continue
+            files = find_submission_files(carpeta, "pdf")
+            if not files:
+                print(f"  -> JPlag: {carpeta.name} no tiene documentos PDF/DOCX.")
+                continue
+            try:
+                submission_texts[carpeta.name] = extract_submission_text(files, "pdf", carpeta)
+            except Exception as exc:
+                print(f"  -> JPlag: no se pudo leer {carpeta.name}: {exc}")
+
+    if len(submission_texts) < 2:
+        print("  -> JPlag: se necesitan al menos dos entregas con texto para comparar.")
+        return {}
+
+    with tempfile.TemporaryDirectory(prefix="pregrader-jplag-text-") as tmp:
+        text_root = Path(tmp)
+        for name, text in submission_texts.items():
+            folder = text_root / name
+            folder.mkdir()
+            (folder / "submission.txt").write_text(text, encoding="utf-8")
+        return _run_jplag(text_root, jplag_jar, threshold, jplag_lang)
+
+
+def _run_jplag(base_path: Path, jplag_jar: str, threshold: float,
+               jplag_lang: str) -> Optional[dict]:
     """
     Ejecuta JPlag sobre base_path con el lenguaje indicado.
     Retorna dict {carpeta_name: {"con_quien": str, "porcentaje": float}}
@@ -355,22 +428,29 @@ def run_plagiarism_check(base_path: Path, jplag_jar: str, threshold: float,
             f.unlink()
 
     cmd = [
-        "java", "-jar", jplag_jar,
+        "java", "--enable-native-access=ALL-UNNAMED", "-jar", str(Path(jplag_jar).resolve()),
         str(base_path),
         "-l", jplag_lang,
         "--result-file", str(output_stem),
         "--cluster-skip",
     ]
 
-    result = run(cmd)
+    try:
+        result = subprocess.run(
+            cmd, text=True, capture_output=True, encoding="utf-8", errors="replace",
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        print("  -> JPlag excedió 120 segundos. La detección de plagio no se completó.")
+        return None
 
     if result.returncode != 0:
         print("  -> Error ejecutando JPlag")
-        stderr_out = result.stderr[:600]
-        if 'UnsupportedClassVersionError' in stderr_out:
+        diagnostics = (result.stdout + "\n" + result.stderr).strip()
+        if 'UnsupportedClassVersionError' in diagnostics:
             print(f"  -> JPlag requiere Java {JPLAG_MIN_JAVA}+.")
         else:
-            print(stderr_out)
+            print(diagnostics[-8000:])
         return None
 
     if not output_file.exists():
@@ -731,9 +811,10 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
         else:
             print("Leyendo enunciado PDF:", enunciado_path)
             enunciado_texto = extract_pdf_text(str(enunciado_file))
+        if not enunciado_texto.strip():
+            raise ValueError("El enunciado no contiene texto extraíble.")
     except Exception as e:
-        print("Error leyendo el enunciado:", e)
-        return
+        raise ValueError(f"Error leyendo el enunciado: {e}") from e
 
     extra_notes = os.environ.get("PREGRADER_EXTRA_NOTES", "").strip()
     if extra_notes:
@@ -835,6 +916,27 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
 
     print("--------------------------------------")
 
+    max_workers = config.getint("performance", "max_workers", fallback=3)
+    estudiantes_nombres = [parse_student_name(c.name) for c in estudiantes]
+    print(f"##STUDENTS## {json.dumps(estudiantes_nombres, ensure_ascii=False)}", flush=True)
+    document_texts = {}
+    document_errors = {}
+    if enable_plagiarism and jplag_lang == "text":
+        print("Preparando texto de documentos para JPlag...", flush=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(extract_submission_text, files, "pdf", carpeta): carpeta
+                for carpeta in estudiantes
+                if (files := find_submission_files(carpeta, "pdf"))
+            }
+            for future in concurrent.futures.as_completed(futures):
+                carpeta = futures[future]
+                try:
+                    document_texts[carpeta.name] = future.result()
+                except Exception as exc:
+                    document_errors[carpeta.name] = str(exc)
+                    print(f"  -> Error leyendo {carpeta.name}: {exc}", flush=True)
+
     # ── Análisis de plagio ────────────────────────────────────────────────────
     plagio_map = {}
     if enable_plagiarism:
@@ -843,7 +945,10 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
             print("  Ruta configurada:", jplag_jar or "(vacía)")
         else:
             print(f"Ejecutando análisis de plagio con JPlag ({jplag_lang})...")
-            result = run_plagiarism_check(base_path, jplag_jar, plagiarism_threshold, jplag_lang)
+            result = run_plagiarism_check(
+                base_path, jplag_jar, plagiarism_threshold, jplag_lang,
+                submission_texts=document_texts if jplag_lang == "text" else None,
+            )
             if result is None:
                 print("  -> Análisis de plagio omitido por error.")
                 print("     La evaluación continuará sin detección de plagio.")
@@ -857,11 +962,8 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
         print("Análisis de plagio desactivado.")
     print("--------------------------------------")
 
-    max_workers = config.getint("performance", "max_workers", fallback=3)
     print(f"Modo paralelo: {max_workers} workers")
 
-    estudiantes_nombres = [parse_student_name(c.name) for c in estudiantes]
-    print(f"##STUDENTS## {json.dumps(estudiantes_nombres, ensure_ascii=False)}", flush=True)
     print("--------------------------------------")
 
     resultados = []
@@ -876,29 +978,43 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
         estudiante = parse_student_name(carpeta.name)
         log("Procesando: " + carpeta.name)
 
+        def failure(message):
+            log("  -> " + message)
+            log("--------------------------------------")
+            return [estudiante, "N/A", "", "", message, ""], logs
+
         # Determinar lenguaje de esta entrega
         if submission_language == "auto":
             lang = detect_language(carpeta)
             if lang is None:
-                log("  -> No se encontraron archivos de entrega reconocidos")
-                log("--------------------------------------")
-                return None, logs
+                return failure("ERROR: no se encontraron archivos de entrega reconocidos. Revisión manual requerida.")
         else:
             lang = submission_language
 
         files = find_submission_files(carpeta, lang)
         if not files:
-            log(f"  -> No se encontraron archivos {LANG_LABELS.get(lang, lang)}")
-            log("--------------------------------------")
-            return None, logs
+            formats = sorted({
+                f.suffix.lower() or "(sin extensión)" for f in carpeta.rglob("*")
+                if f.is_file() and not _is_ignored_path(carpeta, f, lang)
+            })
+            expected = "PDF/DOCX" if lang == "pdf" else LANG_LABELS.get(lang, lang)
+            return failure(
+                f"ERROR: no se encontraron archivos {expected}. "
+                f"Formatos presentes: {', '.join(formats) or 'ninguno'}. Revisión manual requerida."
+            )
 
         log(f"  -> Lenguaje: {LANG_LABELS.get(lang, lang)} ({len(files)} archivo(s))")
 
         # Código fuente de la entrega (para preview y evaluación)
         try:
-            codigo_fuente = extract_submission_text(files, lang, carpeta)
-        except Exception:
-            codigo_fuente = ""
+            if carpeta.name in document_errors:
+                return failure("ERROR leyendo entrega: " + document_errors[carpeta.name])
+            if carpeta.name in document_texts:
+                codigo_fuente = document_texts[carpeta.name]
+            else:
+                codigo_fuente = extract_submission_text(files, lang, carpeta)
+        except Exception as exc:
+            return failure(f"ERROR leyendo entrega: {exc}")
 
         # Datos de plagio
         plagio_info   = plagio_map.get(carpeta.name, {})
@@ -976,7 +1092,7 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                 log("  -> Falló evaluación LLM")
                 log("--------------------------------------")
                 plagio_str = f"Con: {con_quien} ({porcentaje}%)" if plagio_info else ""
-                return [estudiante, compila_str, plagio_str, 0.0, "ERROR evaluando LLM", codigo_fuente], logs
+                return [estudiante, compila_str, plagio_str, "", "ERROR evaluando LLM", codigo_fuente], logs
 
             try:
                 logica = round(clamp(float(resp.get("logica", resp.get("nota_final", 0)))), 1)
@@ -995,14 +1111,18 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
         return [estudiante, compila_str, plagio_str, logica, comentario, codigo_fuente], logs
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_process_student, c) for c in estudiantes]
+        futures = {executor.submit(_process_student, c): c for c in estudiantes}
         for future in concurrent.futures.as_completed(futures):
             try:
                 row, logs = future.result()
             except Exception as exc:
                 with _print_lock:
-                    print("  -> Error inesperado en worker:", exc)
-                continue
+                    print(f"  -> Error inesperado en {futures[future].name}: {exc}")
+                row = [
+                    parse_student_name(futures[future].name), "N/A", "", "",
+                    f"ERROR inesperado procesando entrega: {exc}", "",
+                ]
+                logs = []
             with _print_lock:
                 for line in logs:
                     print(line)
@@ -1015,12 +1135,14 @@ def _run_main(tmp_dir, zip_path, enunciado_path, config):
                     "nota":       row[3],
                     "comentario": row[4],
                     "codigo":     row[5] if len(row) > 5 else "",
+                    "estado":    "error" if row[3] == "" else "evaluado",
                 }
                 print(f"##RESULT## {json.dumps(row_dict, ensure_ascii=False)}", flush=True)
 
     shutil.rmtree(classes_root, ignore_errors=True)
     print("Procesamiento finalizado.")
-    print(f"##DONE## {json.dumps({'count': len(resultados)}, ensure_ascii=False)}", flush=True)
+    failed = sum(row[3] == "" for row in resultados)
+    print(f"##DONE## {json.dumps({'count': len(resultados), 'total': len(estudiantes), 'failed': failed}, ensure_ascii=False)}", flush=True)
     print("======================================")
 
 

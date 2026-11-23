@@ -11,6 +11,7 @@ let _resultSeq        = 0;
 let _lastRendered     = [];
 let _syncTimer        = null;
 let _gradingStartedAt = 0;
+let gradingInProgress = false;
 
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
@@ -162,13 +163,18 @@ async function saveConfig(silent = false) {
   };
   try {
     const res = await fetch('/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    if (res.ok) { if (!silent) UI.toast('Configuración guardada', { type: 'success' }); }
-    else UI.toast('No se pudo guardar la configuración.', { type: 'error' });
+    if (res.ok) {
+      if (!silent) UI.toast('Configuración guardada', { type: 'success' });
+      return true;
+    }
+    UI.toast('No se pudo guardar la configuración.', { type: 'error' });
   } catch (e) {
     console.error(e);
     UI.toast('Error de red al guardar la configuración.', { type: 'error' });
+  } finally {
+    btn.disabled = false;
   }
-  btn.disabled = false;
+  return false;
 }
 
 function syncThreshold(v)      { document.getElementById('cfg-threshold').value       = parseFloat(v).toFixed(2); }
@@ -321,8 +327,8 @@ function updateRunButton() {
     : _files.pdf.length > 0;
   const zipReady = !!_files.zip;
   const both = zipReady && enunciadoReady;
-  btn.disabled = !both;
-  btn.classList.toggle('ready', both);
+  btn.disabled = gradingInProgress || !both;
+  btn.classList.toggle('ready', both && !gradingInProgress);
 
   document.getElementById('req-enunciado').classList.toggle('done', enunciadoReady);
   document.getElementById('req-zip').classList.toggle('done', zipReady);
@@ -361,6 +367,7 @@ function flashZone(id) {
 }
 
 function setRunning(running) {
+  gradingInProgress = running;
   const btn = document.getElementById('btn-run');
   btn.innerHTML = running
     ? '<div class="spinner"></div> Calificando...'
@@ -399,11 +406,17 @@ async function stopJob() {
 }
 
 async function runPregrader() {
+  if (gradingInProgress) return;
   if (!_files.zip) { flashZone('drop-zip'); return; }
   if (enunciadoMode === 'text') {
     if (!document.getElementById('enunciado-text').value.trim()) { flashZone('drop-text'); return; }
   } else if (!_files.pdf.length) { flashZone('drop-pdf'); return; }
-  await saveConfig(true);
+  setRunning(true);
+  currentJobId = null;
+  if (!await saveConfig(true)) {
+    setRunning(false);
+    return;
+  }
 
   document.getElementById('log-output').innerHTML = '<span class="log-empty">Esperando salida...</span>';
   document.getElementById('log-output').style.display = 'none';
@@ -465,22 +478,33 @@ async function runPregrader() {
     } else if (msg.type === 'student_result') {
       handleStudentResult(msg.data);
     } else if (msg.type === 'done') {
-      es.close(); setRunning(false); setStatusDot('done');
-      setStatusText('¡Evaluación completada!'); setStatusBadge('Completado','done');
-      appendLog(''); appendLog(`${msg.count || liveResults.length} estudiante(s) evaluado(s).`);
-      document.getElementById('live-prog-eta').textContent = '';
-      UI.toast(`Calificación completada: ${msg.count || liveResults.length} estudiante(s).`, { type: 'success' });
+      es.close(); setRunning(false);
+      const failed = msg.failed ?? liveResults.filter(r => r.estado === 'error').length;
+      const evaluated = liveResults.length - failed;
+      const incomplete = completedStudents < totalStudents;
+      const hasErrors = failed > 0 || incomplete;
+      setStatusDot(hasErrors ? 'error' : 'done');
+      setStatusText(hasErrors ? 'Evaluación finalizada con entregas que requieren revisión.' : '¡Evaluación completada!');
+      setStatusBadge(hasErrors ? 'Requiere revisión' : 'Completado', hasErrors ? 'error' : 'done');
+      appendLog(''); appendLog(`${evaluated} estudiante(s) evaluado(s); ${failed} con error.`);
+      finalizeProgress('Sin resultado');
+      UI.toast(
+        hasErrors ? `${evaluated} evaluados; revisa las entregas sin nota y el log.` : `Calificación completada: ${evaluated} estudiante(s).`,
+        { type: hasErrors ? 'error' : 'success' }
+      );
       showResultsCard();
     } else if (msg.type === 'error') {
       es.close(); setRunning(false); setStatusDot('error');
       setStatusText('Error durante la evaluación'); setStatusBadge('Error','error');
       appendLog('[ERROR] ' + msg.data);
+      finalizeProgress('Sin resultado');
       UI.toast('Ocurrió un error durante la evaluación. Revisa el log.', { type: 'error', duration: 8000 });
+      if (liveResults.length) showResultsCard();
     } else if (msg.type === 'cancelled') {
       es.close(); setRunning(false); setStatusDot('error');
       setStatusText('Calificación cancelada'); setStatusBadge('Cancelado','error');
       appendLog(''); appendLog('Proceso detenido manualmente.');
-      document.getElementById('live-prog-eta').textContent = '';
+      finalizeProgress('Cancelado');
       if (liveResults.length) {
         UI.toast(`Cancelado. Conservamos ${liveResults.length} de ${totalStudents} resultados.`, { type: 'info', duration: 7000 });
         showResultsCard();
@@ -494,10 +518,21 @@ async function runPregrader() {
     if (!document.getElementById('btn-cancel').classList.contains('hidden')) {
       UI.toast('Se perdió la conexión con el servidor. Los resultados ya calificados se conservan.', { type: 'error', duration: 8000 });
       setStatusText('Conexión perdida'); setStatusDot('error'); setStatusBadge('Interrumpido', 'error');
+      finalizeProgress('Interrumpido');
       if (liveResults.length) showResultsCard();
     }
     setRunning(false);
   };
+}
+
+function finalizeProgress(pendingLabel) {
+  document.querySelectorAll('#chips-container .chip.pending').forEach(chip => {
+    chip.className = 'chip grade-na';
+    chip.innerHTML = `<span class="chip-grade">${esc(pendingLabel)}</span><span class="chip-name">${esc(truncName(chip.dataset.name,20))}</span>`;
+  });
+  document.getElementById('live-prog-eta').textContent = '';
+  document.getElementById('live-prog-text').textContent =
+    `${completedStudents} de ${totalStudents} entregas procesadas`;
 }
 
 function toggleLog() {
@@ -536,12 +571,13 @@ function handleStudentResult(data) {
   const name  = data.estudiante || '';
   const tot   = parseFloat(data.nota);
   const cls   = gradeChipClass(tot);
-  const grade = isNaN(tot) ? '—' : tot.toFixed(1);
+  const grade = data.estado === 'error' ? 'Error' : isNaN(tot) ? '—' : tot.toFixed(1);
   const chips = document.querySelectorAll('#chips-container .chip');
   let chip = null;
   chips.forEach(c => { if (c.dataset.name === name) chip = c; });
   if (!chip) { chip = document.createElement('div'); chip.dataset.name = name; document.getElementById('chips-container').appendChild(chip); }
   chip.className = `chip ${cls}`;
+  chip.title = data.estado === 'error' ? (data.comentario || 'Revisión manual requerida') : '';
   chip.innerHTML = `<span class="chip-grade">${esc(grade)}</span><span class="chip-name">${esc(truncName(name,20))}</span>`;
   updateLiveProgress();
 }
@@ -553,7 +589,7 @@ function updateLiveProgress() {
   const remaining = totalStudents - completedStudents;
   document.getElementById('live-prog-text').textContent = remaining > 0
     ? `Calificando estudiante ${completedStudents + 1} de ${totalStudents} · ${completedStudents} listo${completedStudents !== 1 ? 's' : ''}`
-    : `${completedStudents} de ${totalStudents} estudiantes calificados`;
+    : `${completedStudents} de ${totalStudents} entregas procesadas`;
   document.getElementById('live-prog-eta').textContent = estimateRemaining(remaining);
 }
 

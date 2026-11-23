@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         p7zip-full \
         wget \
         ca-certificates \
+        libreoffice-writer \
+        fonts-dejavu-core \
+        fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Java 25 JDK from Adoptium (JPlag 6.3.0 needs Java 25; JDK for javac) ──

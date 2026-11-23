@@ -68,6 +68,15 @@ _results: dict[str, list] = {}
 _procs: dict[str, subprocess.Popen] = {}
 # job_id → (usuario, texto extraído del enunciado)
 _job_statements: dict[str, tuple[str, str]] = {}
+# Una reserva cubre también el intervalo entre la subida y el inicio del proceso.
+_active_jobs: dict[str, str] = {}
+_job_lock = threading.Lock()
+
+
+def _release_job(username: str, job_id: str):
+    with _job_lock:
+        if _active_jobs.get(username) == job_id:
+            _active_jobs.pop(username)
 
 # run_id → sesión de consola interactiva del preview de código (ver InteractiveRun)
 _interactive_runs: dict[str, "InteractiveRun"] = {}
@@ -274,6 +283,26 @@ def index():
 @app.route("/run", methods=["POST"])
 @auth.login_required
 def run_pregrader():
+    username = session["user"]
+    with _job_lock:
+        if username in _active_jobs:
+            return jsonify({
+                "error": "Ya tienes una evaluación en curso. Espera a que termine o cancélala.",
+                "job_id": _active_jobs[username],
+            }), 409
+        job_id = os.urandom(8).hex()
+        _active_jobs[username] = job_id
+    try:
+        response = _start_pregrader(job_id)
+    except Exception:
+        _release_job(username, job_id)
+        raise
+    if app.make_response(response).status_code != 200:
+        _release_job(username, job_id)
+    return response
+
+
+def _start_pregrader(job_id: str):
     """Acepta ZIP + uno o varios PDF como multipart/form-data y lanza la evaluación."""
     zip_file = request.files.get("zip_file")
     pdf_files = request.files.getlist("pdf_file") or request.files.getlist("pdf_files")
@@ -333,7 +362,6 @@ def run_pregrader():
     # Config efectiva del job: global (admin) + personal del usuario.
     job_cfg_dir = build_job_config_dir(username)
 
-    job_id = os.urandom(8).hex()
     q: queue.Queue = queue.Queue()
     _queues[job_id] = q
     _job_statements[job_id] = (username, statement_text)
@@ -347,6 +375,10 @@ def run_pregrader():
             env["PREGRADER_EXTRA_NOTES"] = extra_notes
 
         job_results = []
+        done_summary = None
+        students = []
+        process_error = None
+        proc = None
 
         try:
             proc = subprocess.Popen(
@@ -377,12 +409,19 @@ def run_pregrader():
                     except Exception:
                         q.put({"type": "log", "data": stripped})
                 elif stripped.startswith("##DONE## "):
-                    pass
+                    done_summary = json.loads(stripped[len("##DONE## "):])
                 else:
                     q.put({"type": "log", "data": stripped})
             proc.stdout.close()
-            proc.wait()
+            exit_code = proc.wait()
+            if exit_code != 0:
+                process_error = f"El evaluador terminó con código de error {exit_code}. Revisa el log."
+            elif done_summary is None:
+                process_error = "El evaluador terminó sin confirmar que completó todas las entregas. Revisa el log."
+            elif done_summary.get("count") != len(job_results) or len(job_results) < len(students):
+                process_error = "El evaluador terminó con entregas sin resultado. Se conservan los resultados disponibles."
         except Exception as exc:
+            process_error = f"Error interno durante la evaluación: {exc}"
             q.put({"type": "log", "data": f"[ERROR interno] {exc}"})
         finally:
             _procs.pop(job_id, None)
@@ -390,8 +429,9 @@ def run_pregrader():
             import shutil
             shutil.rmtree(tmp_dir, ignore_errors=True)
             shutil.rmtree(job_cfg_dir, ignore_errors=True)
+            _release_job(username, job_id)
 
-        cancelled = getattr(proc, "_cancelled", False) if "proc" in dir() else False
+        cancelled = getattr(proc, "_cancelled", False)
         if cancelled:
             q.put({"type": "cancelled"})
             q.put(None)
@@ -405,7 +445,14 @@ def run_pregrader():
                 )
             except Exception as exc:
                 print(f"[historial] No se pudo guardar el historial de {username}: {exc}")
-        q.put({"type": "done", "job_id": job_id, "count": len(job_results)})
+        if process_error:
+            q.put({"type": "error", "data": process_error})
+        else:
+            q.put({
+                "type": "done", "job_id": job_id, "count": len(job_results),
+                "total": done_summary.get("total", len(job_results)),
+                "failed": done_summary.get("failed", 0),
+            })
         q.put(None)
 
     threading.Thread(target=worker, daemon=True).start()
